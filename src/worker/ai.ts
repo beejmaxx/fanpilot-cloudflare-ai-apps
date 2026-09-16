@@ -3,6 +3,7 @@ import type {
   AiConstraint,
   AiExtraction,
   AiProposal,
+  AiSource,
   Constraint,
   Participant,
   Room,
@@ -88,7 +89,7 @@ export async function extractPlanningFacts(
   message: string,
   participantName: string,
   existingConstraints: Constraint[],
-): Promise<AiExtraction> {
+): Promise<AiExtraction & { source: AiSource }> {
   const existing = existingConstraints.map((constraint) => ({
     type: constraint.type,
     value: constraint.value,
@@ -113,10 +114,10 @@ export async function extractPlanningFacts(
       max_tokens: 550,
       temperature: 0.1,
     });
-    return aiExtractionSchema.parse(responseValue(result));
+    return { ...aiExtractionSchema.parse(responseValue(result)), source: "workers-ai" };
   } catch (error) {
     console.warn("Workers AI extraction failed; using deterministic fallback", error);
-    return fallbackExtraction(message, participantName);
+    return { ...fallbackExtraction(message, participantName), source: "fallback" };
   }
 }
 
@@ -125,7 +126,7 @@ export async function generatePlanningProposals(
   room: Room,
   participants: Participant[],
   constraints: Constraint[],
-): Promise<AiProposal[]> {
+): Promise<{ proposals: AiProposal[]; source: AiSource }> {
   const state = {
     event: room.prompt,
     participants: participants.map((participant) => ({
@@ -154,10 +155,10 @@ export async function generatePlanningProposals(
       max_tokens: 1_500,
       temperature: 0.35,
     });
-    return aiProposalSetSchema.parse(responseValue(result)).proposals;
+    return { proposals: aiProposalSetSchema.parse(responseValue(result)).proposals, source: "workers-ai" };
   } catch (error) {
     console.warn("Workers AI proposal generation failed; using deterministic fallback", error);
-    return fallbackProposals(room, constraints);
+    return { proposals: fallbackProposals(room, constraints), source: "fallback" };
   }
 }
 

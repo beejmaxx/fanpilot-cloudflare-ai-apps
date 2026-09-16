@@ -9,6 +9,7 @@ import {
 } from "../shared/schemas";
 import type {
   AiProposal,
+  AiSource,
   Constraint,
   ConstraintStrength,
   ConstraintType,
@@ -25,11 +26,13 @@ import { titleFromPrompt } from "../shared/title";
 import { extractPlanningFacts } from "./ai";
 import type { Env } from "./env";
 import { errorResponse, HttpError, json, parseJson } from "./http";
+import { isCurrentWorkflowResult } from "./workflow-state";
 
 const initializeSchema = createRoomSchema.extend({ roomId: z.string().uuid() });
 const workflowCommitSchema = z.object({
   workflowRunId: z.string().uuid(),
   sourceStateVersion: z.number().int().nonnegative(),
+  source: z.enum(["workers-ai", "fallback"]),
   proposals: z.array(
     z.object({
       title: z.string(),
@@ -283,6 +286,7 @@ export class RallyRoom extends DurableObject<Env> {
         `I started the room and captured the first details. Share this room so everyone can add their constraints.`,
         now + 1,
       );
+      this.addEvent("agent.responded", null, { sourceMessageId: sourceMessage, aiSource: extraction.source });
       this.bumpVersion();
     });
 
@@ -393,7 +397,7 @@ export class RallyRoom extends DurableObject<Env> {
       this.insertConstraints(extraction.constraints, participant.id, messageId, Date.now());
       const reply = [extraction.acknowledgement, extraction.followUpQuestion].filter(Boolean).join(" ");
       this.insertAgentMessage(reply, Date.now());
-      this.addEvent("agent.responded", null, { sourceMessageId: messageId });
+      this.addEvent("agent.responded", null, { sourceMessageId: messageId, aiSource: extraction.source });
       this.bumpVersion();
     });
     await this.broadcastSnapshot();
@@ -503,7 +507,7 @@ export class RallyRoom extends DurableObject<Env> {
   private async commitWorkflow(request: Request): Promise<Response> {
     const input = await parseJson(request, workflowCommitSchema);
     const room = this.getRoom();
-    if (room.stateVersion !== input.sourceStateVersion || room.stage !== "generating") {
+    if (!isCurrentWorkflowResult(room, input.sourceStateVersion)) {
       throw new HttpError(409, "Room changed while proposals were being generated");
     }
     const run = this.ctx.storage.sql
@@ -532,7 +536,7 @@ export class RallyRoom extends DurableObject<Env> {
         now,
       );
       this.insertAgentMessage("I created three options from the group's confirmed constraints. Review the tradeoffs, then vote for the plan you prefer.", now);
-      this.addEvent("proposal_set.ready", null, { proposalSetId });
+      this.addEvent("proposal_set.ready", null, { proposalSetId, aiSource: input.source });
     });
     await this.broadcastSnapshot();
     return json(this.getSnapshot());
@@ -690,7 +694,27 @@ export class RallyRoom extends DurableObject<Env> {
       proposals: this.getProposals(),
       votes: this.getVotes(),
       eventSequence: eventSequence ?? 0,
+      aiUsage: {
+        extraction: this.latestAiSource("agent.responded"),
+        proposals: this.latestAiSource("proposal_set.ready"),
+      },
     };
+  }
+
+  private latestAiSource(eventType: string): AiSource | null {
+    const row = this.ctx.storage.sql
+      .exec<{ payload_json: string }>(
+        "SELECT payload_json FROM room_events WHERE type = ? ORDER BY sequence DESC LIMIT 1",
+        eventType,
+      )
+      .toArray()[0];
+    if (!row) return null;
+    try {
+      const source = (JSON.parse(row.payload_json) as { aiSource?: unknown }).aiSource;
+      return source === "workers-ai" || source === "fallback" ? source : null;
+    } catch {
+      return null;
+    }
   }
 
   private insertConstraints(

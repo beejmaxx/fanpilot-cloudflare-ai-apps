@@ -72,6 +72,7 @@ test("two people can plan, vote, finalize, and reload the result", async ({ brow
 test("room sessions enforce authentication and organizer permissions", async ({ request }) => {
   const organizer = await createRoom(request);
   const participant = await joinRoom(request, organizer.roomId);
+  expect(organizer.snapshot.aiUsage.extraction).toBe("fallback");
 
   expect((await request.get(`/api/rooms/${organizer.roomId}/snapshot`)).status()).toBe(401);
   expect((await request.get(`/api/rooms/${organizer.roomId}/snapshot`, {
@@ -87,6 +88,7 @@ test("changing a vote replaces it and only the organizer can finalize", async ({
   const organizer = await createRoom(request);
   const participant = await joinRoom(request, organizer.roomId);
   const voting = await generateAndWait(request, organizer);
+  expect(voting.aiUsage.proposals).toBe("fallback");
   const [first, second] = voting.proposals;
 
   let response = await request.post(`/api/rooms/${organizer.roomId}/vote`, {
@@ -160,4 +162,156 @@ test("WebSocket reconnect receives current state and sync frames", async ({ requ
   secondConnection.socket.send("sync");
   expect((await synced).eventSequence).toBe(secondConnection.snapshot.eventSequence);
   secondConnection.socket.close(1000, "test complete");
+});
+
+test("concurrent messages are preserved and duplicate client IDs are idempotent", async ({ request }) => {
+  const organizer = await createRoom(request);
+  const participant = await joinRoom(request, organizer.roomId);
+  const duplicateId = crypto.randomUUID();
+
+  let response = await request.post(`/api/rooms/${organizer.roomId}/message`, {
+    headers: auth(participant),
+    data: { body: "Keep this message once", clientId: duplicateId },
+  });
+  expect(response.status()).toBe(200);
+  response = await request.post(`/api/rooms/${organizer.roomId}/message`, {
+    headers: auth(participant),
+    data: { body: "This duplicate must be ignored", clientId: duplicateId },
+  });
+  expect(response.status()).toBe(200);
+
+  const messages = Array.from({ length: 6 }, (_, index) => `Concurrent preference ${index + 1}`);
+  const responses = await Promise.all(messages.map((body, index) => request.post(
+    `/api/rooms/${organizer.roomId}/message`,
+    {
+      headers: auth(index % 2 === 0 ? organizer : participant),
+      data: { body, clientId: crypto.randomUUID() },
+    },
+  )));
+  expect(responses.every((item) => item.status() === 200)).toBe(true);
+
+  const current = await snapshot(request, organizer);
+  const userMessages = current.messages.filter((item) => item.kind === "user").map((item) => item.body);
+  expect(userMessages.filter((body) => body === "Keep this message once")).toHaveLength(1);
+  expect(userMessages).not.toContain("This duplicate must be ignored");
+  for (const body of messages) expect(userMessages.filter((item) => item === body)).toHaveLength(1);
+});
+
+test("regeneration clears the prior result and votes before creating a fresh set", async ({ request }) => {
+  const organizer = await createRoom(request);
+  const participant = await joinRoom(request, organizer.roomId);
+  const firstSet = await generateAndWait(request, organizer);
+  const selected = firstSet.proposals[0];
+
+  expect((await request.post(`/api/rooms/${organizer.roomId}/vote`, {
+    headers: auth(participant),
+    data: { proposalId: selected.id, value: 1, reason: "Works for me" },
+  })).status()).toBe(200);
+  expect((await request.post(`/api/rooms/${organizer.roomId}/finalize`, {
+    headers: auth(organizer),
+    data: { proposalId: selected.id },
+  })).status()).toBe(200);
+
+  const response = await request.post(`/api/rooms/${organizer.roomId}/generate`, {
+    headers: auth(organizer),
+    data: {},
+  });
+  expect(response.status()).toBe(202);
+  const regenerating = (await response.json() as { snapshot: RoomSnapshot }).snapshot;
+  expect(regenerating.room).toMatchObject({ stage: "generating", finalizedProposalId: null });
+  expect(regenerating.proposals).toEqual([]);
+  expect(regenerating.votes).toEqual([]);
+
+  await expect.poll(async () => (await snapshot(request, organizer)).room.stage, {
+    timeout: 20_000,
+  }).toBe("voting");
+  const secondSet = await snapshot(request, organizer);
+  expect(secondSet.proposals).toHaveLength(3);
+  expect(secondSet.proposals.map((item) => item.id)).not.toContain(selected.id);
+});
+
+test("invalid input, unknown rooms, and cross-room tokens are rejected", async ({ request }) => {
+  let response = await request.post("/api/rooms", {
+    headers: { "content-type": "application/json" },
+    data: "{",
+  });
+  expect(response.status()).toBe(400);
+
+  response = await request.get("/api/rooms/not-a-room/snapshot");
+  expect(response.status()).toBe(400);
+  response = await request.get("/api/rooms/00000000-0000-4000-8000-000000000000/snapshot", {
+    headers: { authorization: "Bearer unknown" },
+  });
+  expect(response.status()).toBe(401);
+
+  const firstRoom = await createRoom(request);
+  const secondRoom = await createRoom(request, "Morgan");
+  response = await request.get(`/api/rooms/${secondRoom.roomId}/snapshot`, {
+    headers: auth(firstRoom),
+  });
+  expect(response.status()).toBe(401);
+
+  response = await request.post(`/api/rooms/${firstRoom.roomId}/join`, {
+    data: { displayName: "   " },
+  });
+  expect(response.status()).toBe(400);
+  response = await request.post(`/api/rooms/${firstRoom.roomId}/message`, {
+    headers: auth(firstRoom),
+    data: { body: "x".repeat(2_001), clientId: crypto.randomUUID() },
+  });
+  expect(response.status()).toBe(400);
+  response = await request.post(`/api/rooms/${firstRoom.roomId}/vote`, {
+    headers: auth(firstRoom),
+    data: { proposalId: crypto.randomUUID(), value: 1, reason: "Too early" },
+  });
+  expect(response.status()).toBe(409);
+});
+
+test("mobile layout remains usable through offline reconnect", async ({ browser, request }) => {
+  const organizer = await createRoom(request, "Mobile Alice");
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+  });
+  await context.addInitScript(({ key, value }) => {
+    localStorage.setItem(key, value);
+    const NativeWebSocket = window.WebSocket;
+    const trackedWindow = window as typeof window & { __rallySocket?: WebSocket };
+    class TrackedWebSocket extends NativeWebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        trackedWindow.__rallySocket = this;
+      }
+    }
+    window.WebSocket = TrackedWebSocket;
+  }, {
+    key: `rally:session:${organizer.roomId}`,
+    value: JSON.stringify({
+      roomId: organizer.roomId,
+      participantId: organizer.participantId,
+      token: organizer.token,
+      role: organizer.role,
+    }),
+  });
+  const page = await context.newPage();
+  await page.goto(`/room/${organizer.roomId}`);
+  const connection = page.locator(".connection");
+  await expect(connection).toHaveClass(/live/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.getByLabel("Message the group").fill("Mobile keyboard message");
+  await page.getByLabel("Message the group").press("Enter");
+  await expect(page.getByText("Mobile keyboard message", { exact: true })).toBeVisible();
+
+  await context.setOffline(true);
+  await page.evaluate(() => {
+    (window as typeof window & { __rallySocket?: WebSocket }).__rallySocket?.close(4000, "offline test");
+  });
+  await expect(connection).toHaveClass(/offline/);
+  await context.setOffline(false);
+  await expect(connection).toHaveClass(/live/, { timeout: 15_000 });
+
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter((item) => item.impact === "critical" || item.impact === "serious")).toEqual([]);
+  await context.close();
 });

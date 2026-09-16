@@ -70,3 +70,7 @@ This file records the human prompts used while designing and implementing Rally.
 > ok whats thee  e2e testing plan?
 
 > ok go ahead run through them
+
+> what else needs testing?
+
+> yes go ahead

@@ -98,12 +98,18 @@ npm run build
 npm run test:e2e
 ```
 
-The Playwright suite launches the installed Brave executable and starts a dedicated local Cloudflare runtime on port 4173. It covers the complete two-person create → join → message → Workflow → vote → finalize journey, authentication and role enforcement, vote replacement, state restoration in a fresh client, WebSocket reconnection, browser console errors, and serious accessibility violations. Deterministic AI fallbacks keep CI repeatable and free of model-output flakiness.
+The Playwright suite launches the installed Brave executable and starts a dedicated local Cloudflare runtime on port 4173. Its nine scenarios cover the complete two-person create → join → message → Workflow → vote → finalize journey, authentication and role enforcement, vote replacement, state restoration, WebSocket reconnection, concurrent messages, idempotent client IDs, regeneration, malformed input, cross-room authorization, mobile offline recovery, browser console errors, and serious accessibility violations. Deterministic AI fallbacks keep CI repeatable and free of model-output flakiness. Durable Object state has also been verified across a full local runtime stop and restart.
 
 Set `BRAVE_PATH` when Brave is installed somewhere other than the standard macOS or Linux location:
 
 ```bash
 BRAVE_PATH=/path/to/brave npm run test:e2e
+```
+
+After deploying, run the opt-in Workers AI smoke test against the public origin. It fails if either extraction or proposal generation falls back from Workers AI:
+
+```bash
+RALLY_BASE_URL=https://your-rally-origin.example npm run test:smoke:remote
 ```
 
 ## Deployment

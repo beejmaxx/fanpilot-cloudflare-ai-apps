@@ -1,5 +1,6 @@
 export type RoomStage = "collecting" | "generating" | "voting" | "finalized";
 export type ParticipantRole = "organizer" | "participant";
+export type AiSource = "workers-ai" | "fallback";
 export type ConstraintType =
   | "date"
   | "time"
@@ -90,6 +91,10 @@ export interface RoomSnapshot {
   proposals: Proposal[];
   votes: Vote[];
   eventSequence: number;
+  aiUsage: {
+    extraction: AiSource | null;
+    proposals: AiSource | null;
+  };
 }
 
 export interface Session {

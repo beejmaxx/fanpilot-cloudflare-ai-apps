@@ -23,7 +23,7 @@ export class ProposalWorkflow extends WorkflowEntrypoint<Env, ProposalWorkflowPa
         return response.json<WorkflowSnapshot>();
       });
 
-      const proposals = await step.do(
+      const generation = await step.do(
         "generate constraint-aware proposals",
         { retries: { limit: 2, delay: "2 seconds", backoff: "exponential" } },
         () => generatePlanningProposals(this.env.AI, snapshot.room, snapshot.participants, snapshot.constraints),
@@ -33,13 +33,13 @@ export class ProposalWorkflow extends WorkflowEntrypoint<Env, ProposalWorkflowPa
         const response = await stub.fetch("https://room.internal/internal/workflow-commit", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ workflowRunId, sourceStateVersion, proposals }),
+          body: JSON.stringify({ workflowRunId, sourceStateVersion, proposals: generation.proposals, source: generation.source }),
         });
         if (!response.ok) throw new Error(`Could not commit proposals (${response.status})`);
         return { committed: true };
       });
 
-      return { proposalCount: proposals.length };
+      return { proposalCount: generation.proposals.length };
     } catch (error) {
       await stub.fetch("https://room.internal/internal/workflow-failed", {
         method: "POST",

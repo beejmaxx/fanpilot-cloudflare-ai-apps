@@ -304,8 +304,8 @@ input:focus, textarea:focus { border-color: var(--purple); box-shadow: 0 0 0 4px
 .constraint-value small { color: var(--muted); font-size: 9px; text-transform: capitalize; }
 .status-chip { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 7px; font-size: 9px; font-weight: 800; white-space: nowrap; }
 .status-chip.hard { background: var(--green-soft); color: var(--green); }
-.status-chip.soft { background: var(--soft); color: var(--muted); }
-.status-chip.warm { background: var(--orange-soft); color: var(--orange); }
+.status-chip.soft { background: var(--soft); color: #6c655d; }
+.status-chip.warm { background: var(--orange-soft); color: #b64d20; }
 .status-chip.best { background: var(--purple-soft); color: var(--purple-dark); }
 .empty-state { padding: 20px 10px; display: grid; justify-items: center; gap: 8px; text-align: center; color: var(--muted); }
 .empty-state p { max-width: 250px; margin: 0; font-size: 11px; line-height: 1.45; }
