@@ -112,3 +112,5 @@ This file records the human prompts used while designing and implementing Rally.
 > yes let's do this, go ahead and implement
 
 > after you're done with this change, make sure we commit properly with a good message to git
+
+> ok test it out 100%

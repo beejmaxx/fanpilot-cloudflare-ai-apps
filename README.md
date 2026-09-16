@@ -104,7 +104,7 @@ npm run build
 npm run test:e2e
 ```
 
-The Playwright suite launches the installed Brave executable locally and starts a dedicated Cloudflare runtime on port 4173. GitHub Actions runs the same suite in Playwright Chromium, the rendering engine Brave is built on, without installing Brave on the runner. Its ten scenarios cover the complete two-person create → join → message → Workflow → vote → finalize journey, magic-link identity restoration across fresh clients, duplicate-participant prevention, authorization and role enforcement, vote replacement, state restoration, WebSocket reconnection, concurrency, malformed input, mobile offline recovery, browser console errors, and serious accessibility violations. Local magic-link requests expose a development-only continuation URL; production responses never include the token.
+The Playwright suite launches the installed Brave executable locally and starts a dedicated Cloudflare runtime on port 4173. GitHub Actions runs the same suite in Playwright Chromium, the rendering engine Brave is built on, without installing Brave on the runner. Its twelve scenarios cover the complete two-person create → join → message → Workflow → vote → finalize journey, magic-link identity restoration across fresh clients, single-use links, logout revocation, same-name accounts, invitation enforcement, duplicate-participant prevention, authorization and role enforcement, vote replacement, state restoration, WebSocket reconnection, concurrency, malformed input, mobile offline recovery, browser console errors, and serious accessibility violations. Local magic-link requests expose a development-only continuation URL; production responses never include the token.
 
 Set `BRAVE_PATH` when Brave is installed somewhere other than the standard macOS or Linux location:
 
@@ -116,6 +116,12 @@ After deploying, run the opt-in Workers AI smoke test against the public origin.
 
 ```bash
 RALLY_BASE_URL=https://fanpilot.app npm run test:smoke:remote
+```
+
+An uploaded Worker version that is present in the active deployment at 0% can be tested against remote D1 and production cookie semantics through Cloudflare's version-override header:
+
+```bash
+RALLY_VERSION_ID=<worker-version-id> npm run test:smoke:auth-remote
 ```
 
 ## Deployment

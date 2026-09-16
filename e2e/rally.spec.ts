@@ -132,6 +132,82 @@ test("magic links restore one identity across fresh clients without duplicate pa
   await secondClient.dispose();
 });
 
+test("magic links are single-use and logout revokes the account session", async ({ playwright }) => {
+  const signedInClient = await playwright.request.newContext({ baseURL: "http://127.0.0.1:4173" });
+  const replayClient = await playwright.request.newContext({ baseURL: "http://127.0.0.1:4173" });
+  const email = `session-${crypto.randomUUID()}@example.com`;
+
+  let response = await signedInClient.post("/api/auth/magic-link", {
+    data: { email, displayName: "Session Test", intent: { type: "rooms" } },
+  });
+  expect(response.status()).toBe(200);
+  const magicLink = (await response.json() as { devMagicLink: string }).devMagicLink;
+
+  response = await signedInClient.get(magicLink, { maxRedirects: 0 });
+  expect(response.status()).toBe(302);
+  expect(response.headers().location).toBe("/rooms");
+  expect((await (await signedInClient.get("/api/auth/me")).json()) as { user: { email: string } }).toMatchObject({
+    user: { email },
+  });
+
+  response = await replayClient.get(magicLink, { maxRedirects: 0 });
+  expect(response.status()).toBe(401);
+
+  response = await signedInClient.post("/api/auth/logout", { data: {} });
+  expect(response.status()).toBe(200);
+  expect(await (await signedInClient.get("/api/auth/me")).json()).toEqual({ user: null });
+  expect((await signedInClient.get("/api/account/rooms")).status()).toBe(401);
+
+  await signedInClient.dispose();
+  await replayClient.dispose();
+});
+
+test("same-name accounts remain distinct and a room ID cannot bypass its invitation", async ({ playwright }) => {
+  const organizerClient = await playwright.request.newContext({ baseURL: "http://127.0.0.1:4173" });
+  const participantClient = await playwright.request.newContext({ baseURL: "http://127.0.0.1:4173" });
+  const sharedName = "Alex Kim";
+
+  let response = await organizerClient.post("/api/auth/magic-link", {
+    data: {
+      email: `organizer-${crypto.randomUUID()}@example.com`,
+      displayName: sharedName,
+      intent: { type: "create", prompt: "Plan an accessible Sunday brunch for eight people." },
+    },
+  });
+  const organizerLink = (await response.json() as { devMagicLink: string }).devMagicLink;
+  response = await organizerClient.get(organizerLink, { maxRedirects: 0 });
+  expect(response.status()).toBe(302);
+  const roomId = response.headers().location.split("/").pop()!;
+
+  response = await participantClient.post("/api/auth/magic-link", {
+    data: {
+      email: `participant-${crypto.randomUUID()}@example.com`,
+      displayName: sharedName,
+      intent: { type: "rooms" },
+    },
+  });
+  const participantLink = (await response.json() as { devMagicLink: string }).devMagicLink;
+  expect((await participantClient.get(participantLink, { maxRedirects: 0 })).status()).toBe(302);
+
+  expect((await participantClient.get(`/api/rooms/${roomId}/account-session`)).status()).toBe(403);
+
+  response = await organizerClient.post(`/api/rooms/${roomId}/invitations`, { data: {} });
+  expect(response.status()).toBe(200);
+  const invitationUrl = (await response.json() as { invitationUrl: string }).invitationUrl;
+  const invitationToken = invitationUrl.split("/").pop()!;
+  expect((await participantClient.post(`/api/invitations/${invitationToken}/accept`, { data: {} })).status()).toBe(200);
+
+  response = await participantClient.get(`/api/rooms/${roomId}/account-session`);
+  expect(response.status()).toBe(200);
+  const joined = await response.json() as { snapshot: RoomSnapshot };
+  const sameNameParticipants = joined.snapshot.participants.filter((item) => item.displayName === sharedName);
+  expect(sameNameParticipants).toHaveLength(2);
+  expect(new Set(sameNameParticipants.map((item) => item.id)).size).toBe(2);
+
+  await organizerClient.dispose();
+  await participantClient.dispose();
+});
+
 test("changing a vote replaces it and only the organizer can finalize", async ({ request }) => {
   const organizer = await createRoom(request);
   const participant = await joinRoom(request, organizer.roomId);
