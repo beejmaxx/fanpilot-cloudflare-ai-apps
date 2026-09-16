@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  rally:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -18,17 +18,17 @@ jobs:
           node-version: 26.8.2
           cache: npm
       - run: npm ci
-      - run: npm test
-      - run: npm run build
+      - run: npm run test:rally
+      - run: npm run build:rally
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - run: npm run test:e2e:rally
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-results
+          name: rally-playwright-results
           path: |
-            playwright-report
-            test-results
+            apps/rally/playwright-report
+            apps/rally/test-results
           if-no-files-found: ignore
           retention-days: 7

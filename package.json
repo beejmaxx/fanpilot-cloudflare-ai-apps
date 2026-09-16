@@ -1,42 +1,27 @@
 {
-  "name": "rally",
+  "name": "fanpilot-cloudflare-apps",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "engines": {
     "node": ">=26.8.2 <27"
   },
   "scripts": {
-    "dev": "vite dev",
-    "dev:e2e": "vite dev",
-    "build": "tsc -b && vite build",
-    "preview": "npm run build && vite preview",
-    "deploy": "npm run build && wrangler deploy",
-    "cf-typegen": "wrangler types",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed",
-    "test:smoke:access-remote": "NODE_USE_ENV_PROXY=1 node scripts/remote-link-smoke.mjs",
-    "test:smoke:remote": "NODE_USE_ENV_PROXY=1 node scripts/remote-ai-smoke.mjs"
-  },
-  "dependencies": {
-    "lucide-react": "^1.46.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "zod": "^4.6.5"
-  },
-  "devDependencies": {
-    "@axe-core/playwright": "^4.13.0",
-    "@cloudflare/vite-plugin": "^1.54.10",
-    "@playwright/test": "^1.63.0",
-    "@types/node": "^26.6.1",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.1",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.0",
-    "vitest": "^4.1.11",
-    "wrangler": "^4.132.0"
+    "dev:rally": "npm run dev --workspace=@fanpilot/rally",
+    "dev:editor": "npm run dev --workspace=@fanpilot/editor",
+    "build": "npm run build --workspaces --if-present",
+    "build:rally": "npm run build --workspace=@fanpilot/rally",
+    "build:editor": "npm run build --workspace=@fanpilot/editor",
+    "test": "npm run test --workspaces --if-present",
+    "test:rally": "npm run test --workspace=@fanpilot/rally",
+    "test:editor": "npm run test --workspace=@fanpilot/editor",
+    "test:e2e:rally": "npm run test:e2e --workspace=@fanpilot/rally",
+    "test:e2e:editor": "npm run test:e2e --workspace=@fanpilot/editor",
+    "deploy:rally": "npm run deploy --workspace=@fanpilot/rally",
+    "deploy:editor": "npm run deploy --workspace=@fanpilot/editor"
   }
 }
