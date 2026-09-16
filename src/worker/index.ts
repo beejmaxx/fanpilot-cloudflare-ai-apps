@@ -34,6 +34,9 @@ export default {
         ]);
         if (!allowed.has(action)) throw new HttpError(404, "Room action not found");
         const headers = new Headers(request.headers);
+        // Version overrides select the edge Worker only. Forwarding this control
+        // header into a Durable Object subrequest causes Cloudflare to reject it.
+        headers.delete("Cloudflare-Workers-Version-Overrides");
         headers.set("x-rally-origin", url.origin);
         return env.RALLY_ROOMS.getByName(roomId).fetch(new Request(`https://room.internal/${action}${url.search}`, {
           method: request.method,

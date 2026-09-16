@@ -8,7 +8,7 @@ if (!baseUrl) {
 
 async function request(path, init = {}, token) {
   const headers = new Headers(init.headers);
-  if (versionId) headers.set("cloudflare-version-override", versionId);
+  if (versionId) headers.set("Cloudflare-Workers-Version-Overrides", `rally-planner="${versionId}"`);
   if (init.body) headers.set("content-type", "application/json");
   if (token) headers.set("authorization", `Bearer ${token}`);
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers });

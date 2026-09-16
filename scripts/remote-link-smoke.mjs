@@ -8,7 +8,7 @@ async function call(path, init = {}, token, expected = 200) {
   const headers = new Headers(init.headers);
   if (init.body) headers.set("content-type", "application/json");
   if (token) headers.set("authorization", `Bearer ${token}`);
-  if (versionId) headers.set("cloudflare-version-override", versionId);
+  if (versionId) headers.set("Cloudflare-Workers-Version-Overrides", `rally-planner="${versionId}"`);
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
   const data = await response.json().catch(() => ({}));
   assert.equal(response.status, expected, `${init.method ?? "GET"} ${path}: ${JSON.stringify(data)}`);
