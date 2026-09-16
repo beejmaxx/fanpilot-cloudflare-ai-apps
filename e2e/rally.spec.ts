@@ -12,6 +12,7 @@ import {
 } from "./helpers";
 
 test("two people can plan, vote, finalize, and reload the result", async ({ browser }) => {
+  test.setTimeout(75_000);
   const organizerContext = await browser.newContext();
   const participantContext = await browser.newContext();
   const organizer = await organizerContext.newPage();
@@ -29,13 +30,21 @@ test("two people can plan, vote, finalize, and reload the result", async ({ brow
     "Plan a birthday dinner in Shanghai next Saturday for six people under ¥300 each.",
   );
   await organizer.getByLabel("Your name").fill("Alice");
-  await organizer.getByRole("button", { name: "Create planning room" }).click();
+  await organizer.getByLabel("Your email").fill("alice@example.com");
+  await organizer.getByRole("button", { name: "Email me a sign-in link" }).click();
+  await organizer.getByRole("link", { name: "Continue locally" }).click();
   await expect(organizer).toHaveURL(/\/room\/[0-9a-f-]+$/);
   await expect(organizer.getByText("Live", { exact: true })).toBeVisible();
 
-  await participant.goto(organizer.url());
+  const roomId = organizer.url().split("/").pop();
+  const invitationResponse = await organizer.request.post(`/api/rooms/${roomId}/invitations`, { data: {} });
+  expect(invitationResponse.status()).toBe(200);
+  const invitation = await invitationResponse.json() as { invitationUrl: string };
+  await participant.goto(invitation.invitationUrl);
   await participant.getByLabel("Your name").fill("Bob");
-  await participant.getByRole("button", { name: "Join room" }).click();
+  await participant.getByLabel("Your email").fill("bob@example.com");
+  await participant.getByRole("button", { name: "Email me a sign-in link" }).click();
+  await participant.getByRole("link", { name: "Continue locally" }).click();
   await expect(participant.getByText("Live", { exact: true })).toBeVisible();
   await expect(organizer.getByLabel("2 participants")).toBeVisible();
 
@@ -82,6 +91,45 @@ test("room sessions enforce authentication and organizer permissions", async ({ 
     headers: auth(participant),
     data: {},
   })).status()).toBe(403);
+});
+
+test("magic links restore one identity across fresh clients without duplicate participants", async ({ playwright }) => {
+  const firstClient = await playwright.request.newContext({ baseURL: "http://127.0.0.1:4173" });
+  const secondClient = await playwright.request.newContext({ baseURL: "http://127.0.0.1:4173" });
+  const email = `identity-${crypto.randomUUID()}@example.com`;
+
+  let response = await firstClient.post("/api/auth/magic-link", {
+    data: {
+      email,
+      displayName: "Alice",
+      intent: { type: "create", prompt: "Plan a Saturday picnic in Shanghai for six people." },
+    },
+  });
+  expect(response.status()).toBe(200);
+  const firstLink = (await response.json() as { devMagicLink: string }).devMagicLink;
+  response = await firstClient.get(firstLink, { maxRedirects: 0 });
+  expect(response.status()).toBe(302);
+  const roomId = response.headers().location.split("/").pop()!;
+  let restored = await firstClient.get(`/api/rooms/${roomId}/account-session`);
+  expect(restored.status()).toBe(200);
+  expect(((await restored.json()) as { snapshot: RoomSnapshot }).snapshot.participants).toHaveLength(1);
+
+  response = await secondClient.post("/api/auth/magic-link", {
+    data: { email, displayName: "Alice Updated", intent: { type: "restore", roomId } },
+  });
+  expect(response.status()).toBe(200);
+  const secondLink = (await response.json() as { devMagicLink: string }).devMagicLink;
+  response = await secondClient.get(secondLink, { maxRedirects: 0 });
+  expect(response.status()).toBe(302);
+  restored = await secondClient.get(`/api/rooms/${roomId}/account-session`);
+  expect(restored.status()).toBe(200);
+  const session = await restored.json() as { snapshot: RoomSnapshot };
+  expect(session.snapshot.participants).toHaveLength(1);
+  expect(session.snapshot.participants[0].displayName).toBe("Alice Updated");
+  expect(((await (await secondClient.get("/api/account/rooms")).json()) as { rooms: unknown[] }).rooms).toHaveLength(1);
+
+  await firstClient.dispose();
+  await secondClient.dispose();
 });
 
 test("changing a vote replaces it and only the organizer can finalize", async ({ request }) => {
@@ -280,7 +328,7 @@ test("mobile layout remains usable through offline reconnect", async ({ browser,
     class TrackedWebSocket extends NativeWebSocket {
       constructor(url: string | URL, protocols?: string | string[]) {
         super(url, protocols);
-        trackedWindow.__rallySocket = this;
+        if (String(url).includes("/api/rooms/")) trackedWindow.__rallySocket = this;
       }
     }
     window.WebSocket = TrackedWebSocket;

@@ -40,6 +40,7 @@ Rally creates a room, extracts the known constraints, asks only the questions ne
 4. **Progress is visible.** The room always shows the next missing decision.
 5. **Returning should feel continuous.** Refreshing or reconnecting restores the entire room.
 6. **Structure emerges from conversation.** Participants should not have to complete a long form before they can contribute.
+7. **Identity survives the browser.** Email identity, membership, roles, and votes follow a person across devices and private browsing sessions.
 
 ## Room lifecycle
 
@@ -82,7 +83,7 @@ The room becomes a concise plan: time, place, attendees, itinerary, assignments,
 
 ### Participant
 
-- joins with a display name;
+- joins through a single-use email magic link and chooses an editable display name;
 - chats with the group and Rally;
 - confirms attendance and preferences;
 - votes on proposed plans;
@@ -101,11 +102,11 @@ The room becomes a concise plan: time, place, attendees, itinerary, assignments,
 
 ### Landing and room creation
 
-The landing page contains one primary input: “What are you planning?” It offers a few example prompts and creates a room immediately. Account creation is outside the first-run path.
+The landing page contains one primary planning input plus name and email. Rally sends a single-use sign-in link; opening it creates both the account and room without a password.
 
 ### Join screen
 
-A guest follows a room link, enters a display name, and joins. The page shows the event title and organizer before entry. A room-specific guest token preserves identity on return.
+A participant follows a dedicated invitation link, enters a name and email, and opens a single-use magic link. Rally creates one membership for that verified identity. A canonical room URL never grants membership by itself.
 
 ### Planning room
 
@@ -118,10 +119,10 @@ On narrow screens, the conversation and plan board become two top-level tabs. Th
 
 ## MVP interaction flow
 
-1. The organizer describes a plan.
-2. Rally creates a durable room and extracts initial constraints.
-3. The organizer copies the invitation link.
-4. Participants join with display names and chat.
+1. The organizer describes a plan and verifies their email.
+2. Rally creates a durable room, account membership, and initial constraints.
+3. The organizer creates and copies a separate invitation link.
+4. Participants verify their email, join once, and chat.
 5. Rally updates structured constraints after each relevant message.
 6. When required inputs are complete, a Workflow creates a shortlist.
 7. The organizer opens voting.
@@ -176,6 +177,8 @@ All model-produced structured data must validate against explicit schemas before
 ```mermaid
 flowchart LR
     UI[Web chat UI] <-->|HTTP + WebSocket| W[Cloudflare Worker]
+    W <--> D1[(D1 identity + membership)]
+    W --> EMAIL[Cloudflare Email Service]
     W <--> DO[Room Durable Object]
     DO -->|structured inference| AI[Workers AI\nLlama 3.3]
     DO -->|start stage work| WF[Cloudflare Workflow]
@@ -186,7 +189,11 @@ flowchart LR
 
 ### Worker
 
-Serves the application, creates rooms, resolves invitation links, and routes room traffic to the correct Durable Object.
+Serves the application, creates and verifies magic-link sessions, resolves invitation links, enforces D1 membership, and routes room traffic to the correct Durable Object.
+
+### D1 and Email Service
+
+D1 stores users, hashed magic-link challenges, hashed revocable sessions, room summaries, memberships, and invitation records. Cloudflare Email Service sends the single-use link from `login@fanpilot.app`. Display names remain editable profile data; email identity and generated user IDs determine membership.
 
 ### Room Durable Object
 
@@ -217,7 +224,7 @@ Room
   event_kind, timezone, created_at, updated_at
 
 Participant
-  id, room_id, display_name, role, rsvp_status
+  id, user_id, room_id, display_name, role, rsvp_status
   joined_at, last_seen_at
 
 Message
@@ -254,7 +261,9 @@ WorkflowRun
 
 The primary database is **SQLite embedded in the room's Durable Object**. Each Rally room receives its own `RoomDurableObject` and therefore its own private, transactional SQLite database on Cloudflare's network.
 
-The initial implementation does not need D1. The invitation URL contains a random room identifier that the Worker maps directly to the correct Durable Object. A separate scoped guest token authorizes a participant; the Durable Object ID itself is not treated as a credential.
+Global identity and discovery use **Cloudflare D1**. A unique `(room_id, user_id)` membership restores the same participant across browsers and prevents duplicate joins. Magic-link, session, and invitation secrets are generated with Web Crypto and only their SHA-256 hashes are stored.
+
+Room conversation state remains in **SQLite embedded in the room's Durable Object**. The canonical room UUID maps to that Durable Object but grants no access. A separate, revocable invitation token authorizes the first membership; after that, the authenticated D1 membership is authoritative.
 
 Storage responsibilities are:
 

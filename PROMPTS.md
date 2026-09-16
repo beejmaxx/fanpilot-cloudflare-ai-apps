@@ -96,3 +96,19 @@ This file records the human prompts used while designing and implementing Rally.
 > [Image attached: screenshot of the Rally planning room.] the UI is a little cluttered, seems like it could be clearer/easier to use/tell what going on, it should be simple and not overwhelming to a first time user
 
 > I thin kthe righ sidebar text could be larger/clearer
+
+> so each time a user creates a new room? how is it linked? can they not reference it again after? what's the auth mechanism?
+
+> can we use cloudflare for auth?
+
+> what if two people have the same name? or what if they enter a different name after opening the link? https://fanpilot.app/room/41607f49-c304-4802-bc25-3fe804f4a3e1
+
+> but I just used the same ID, opened in an incognito tab, it didn't recognize me as the same user, so won't hat create a new 'user' everytime the same person tries to open the page again?
+
+> then it's broken, proprose a better design
+
+> why not use magic link if we're going to use emails/
+
+> yes let's do this, go ahead and implement
+
+> after you're done with this change, make sure we commit properly with a good message to git

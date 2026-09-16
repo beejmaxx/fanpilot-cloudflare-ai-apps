@@ -100,8 +100,22 @@ export interface RoomSnapshot {
 export interface Session {
   roomId: string;
   participantId: string;
-  token: string;
+  token?: string;
   role: ParticipantRole;
+}
+
+export interface AccountUser {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
+export interface RoomSummary {
+  id: string;
+  title: string;
+  role: ParticipantRole;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface ApiError {

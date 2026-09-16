@@ -21,12 +21,12 @@ Rally keeps the conversation as the input while maintaining a live, structured p
 | LLM | Llama 3.3 70B through Workers AI, using JSON Mode for structured extraction and proposal generation |
 | Workflow / coordination | A Cloudflare Workflow creates a versioned proposal set; a Worker routes requests; one Durable Object serializes each room |
 | Chat or voice input | Multi-user chat with hibernating WebSockets for realtime room updates |
-| Memory or state | A private SQLite database attached to each room's Durable Object |
+| Memory or state | Durable Object SQLite for live room state and D1 for accounts, sessions, memberships, and invitations |
 
 ## Product flow
 
-1. The organizer describes an event and receives an invitation link.
-2. Participants join with a display name and state their availability, budget, location, accessibility needs, dietary needs, and preferences.
+1. The organizer describes an event and verifies their email through a single-use magic link.
+2. The organizer shares a separate, revocable invitation link. Participants verify their email once, then state their availability, budget, location, accessibility needs, dietary needs, and preferences.
 3. Llama 3.3 converts relevant messages into structured constraints, preserving the source participant and message.
 4. The organizer starts proposal generation.
 5. A Workflow snapshots the room version, generates three options, and commits them only if the room has not changed underneath it.
@@ -39,6 +39,8 @@ Rally keeps the conversation as the input while maintaining a live, structured p
 ```mermaid
 flowchart LR
     UI[React chat UI] <-->|HTTP + hibernating WebSocket| W[Cloudflare Worker]
+    W <--> D1[(D1 accounts + memberships)]
+    W --> EMAIL[Cloudflare Email Service]
     W <--> DO[Room Durable Object]
     DO --> SQL[(Private SQLite database)]
     DO -->|structured extraction| AI[Workers AI\nLlama 3.3 70B]
@@ -64,7 +66,9 @@ Each room owns an independent SQLite database containing:
 - `room_events`: an ordered audit stream;
 - `workflow_runs`: durable execution references and outcomes.
 
-Raw room tokens are never stored. WebSocket sessions send the opaque token as a subprotocol value so it does not appear in request URLs or routine access logs.
+New accounts use random, single-use magic-link tokens and revocable 30-day sessions. Only SHA-256 token hashes are stored in D1; browser sessions use `HttpOnly`, `Secure`, `SameSite=Lax` cookies. A unique `(room_id, user_id)` membership prevents duplicate participants across browsers and devices. Existing room-scoped tokens remain supported for rooms created before the account migration.
+
+D1 contains `users`, `auth_challenges`, `sessions`, `rooms`, `room_memberships`, and `invitations`. Invitation URLs contain a separate random token and are not interchangeable with canonical room URLs. The room UUID identifies Durable Object state but does not grant membership.
 
 ## Local development
 
@@ -100,7 +104,7 @@ npm run build
 npm run test:e2e
 ```
 
-The Playwright suite launches the installed Brave executable locally and starts a dedicated Cloudflare runtime on port 4173. GitHub Actions runs the same suite in Playwright Chromium, the rendering engine Brave is built on, without installing Brave on the runner. Its nine scenarios cover the complete two-person create → join → message → Workflow → vote → finalize journey, authentication and role enforcement, vote replacement, state restoration, WebSocket reconnection, concurrent messages, idempotent client IDs, regeneration, malformed input, cross-room authorization, mobile offline recovery, browser console errors, and serious accessibility violations. Deterministic AI fallbacks keep CI repeatable and free of model-output flakiness. Durable Object state has also been verified across a full local runtime stop and restart.
+The Playwright suite launches the installed Brave executable locally and starts a dedicated Cloudflare runtime on port 4173. GitHub Actions runs the same suite in Playwright Chromium, the rendering engine Brave is built on, without installing Brave on the runner. Its ten scenarios cover the complete two-person create → join → message → Workflow → vote → finalize journey, magic-link identity restoration across fresh clients, duplicate-participant prevention, authorization and role enforcement, vote replacement, state restoration, WebSocket reconnection, concurrency, malformed input, mobile offline recovery, browser console errors, and serious accessibility violations. Local magic-link requests expose a development-only continuation URL; production responses never include the token.
 
 Set `BRAVE_PATH` when Brave is installed somewhere other than the standard macOS or Linux location:
 
@@ -116,18 +120,20 @@ RALLY_BASE_URL=https://fanpilot.app npm run test:smoke:remote
 
 ## Deployment
 
-Authenticate once, then deploy the Worker, static assets, Durable Object migration, Workflow, and Workers AI binding together:
+Enable Cloudflare Email Sending Beta for `fanpilot.app` (the Cloudflare account must have access to the service), apply the D1 migrations, then deploy the Worker, static assets, Durable Object migration, Workflow, Workers AI, D1, and email bindings:
 
 ```bash
+npx wrangler email sending enable fanpilot.app
+npx wrangler d1 migrations apply rally-auth --remote
 npx wrangler login
 npm run deploy
 ```
 
-No model API key is stored in the application. The deployed Worker receives Workers AI through the `AI` binding declared in [`wrangler.jsonc`](wrangler.jsonc).
+No model or email API key is stored in the application. The deployed Worker receives Workers AI and Email Service through bindings declared in [`wrangler.jsonc`](wrangler.jsonc).
 
 ## Deliberate MVP boundaries
 
-The current product coordinates a group using their supplied constraints. It does not claim to verify venue availability, prices, reservations, or addresses. Venue search, maps, email/SMS reminders, calendars, payments, accounts, and public event discovery remain outside the assignment scope.
+The current product coordinates a group using their supplied constraints. It does not claim to verify venue availability, prices, reservations, or addresses. Venue search, maps, reminders, calendars, payments, and public event discovery remain outside the assignment scope.
 
 This keeps the core demonstration focused on durable coordination: multiple users, realtime state, structured LLM output, recoverable Workflows, voting, and persistent memory.
 

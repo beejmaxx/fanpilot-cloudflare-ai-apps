@@ -9,6 +9,17 @@ export const joinRoomSchema = z.object({
   displayName: z.string().trim().min(1).max(60),
 });
 
+export const magicLinkSchema = z.object({
+  email: z.string().trim().email().max(254),
+  displayName: z.string().trim().min(1).max(60),
+  intent: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("create"), prompt: z.string().trim().min(8).max(1_500) }),
+    z.object({ type: z.literal("join"), invitationToken: z.string().regex(/^[0-9a-f]{64}$/i) }),
+    z.object({ type: z.literal("restore"), roomId: z.string().uuid() }),
+    z.object({ type: z.literal("rooms") }),
+  ]),
+});
+
 export const messageSchema = z.object({
   body: z.string().trim().min(1).max(2_000),
   clientId: z.string().uuid(),
