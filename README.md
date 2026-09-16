@@ -68,7 +68,7 @@ Raw room tokens are never stored. WebSocket sessions send the opaque token as a 
 
 Requirements:
 
-- Node.js 22 or newer
+- Node.js 26.8.2 (see `.nvmrc`)
 - npm
 - A Cloudflare account only when exercising remote Workers AI or deploying
 

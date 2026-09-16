@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=26.8.2 <27"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "tsc -b && vite build",
@@ -20,8 +23,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.54.10",
-    "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@types/node": "^24.10.0",
+    "@types/node": "^26.6.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

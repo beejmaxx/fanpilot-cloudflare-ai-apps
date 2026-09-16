@@ -56,3 +56,13 @@ This file records the human prompts used while designing and implementing Rally.
 > ok looks good, build it
 
 > don't use chrome for this - use brave if you must
+
+> make sure we have a git repo and make one on my github also
+
+> what version of node are we on? get on latest?
+
+> how do I test this app out?
+
+> and what testing have you already done? any e2e tests?
+
+> start dev server then
