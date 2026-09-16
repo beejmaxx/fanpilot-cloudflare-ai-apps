@@ -21,12 +21,29 @@ export async function createRoom(
 
 export async function joinRoom(
   request: APIRequestContext,
-  roomId: string,
+  organizer: Session,
   displayName = "Bob",
 ): Promise<SessionResponse> {
-  const response = await request.post(`/api/rooms/${roomId}/join`, { data: { displayName } });
+  const invitation = await createInvitation(request, organizer);
+  const response = await request.post(`/api/rooms/${organizer.roomId}/join`, {
+    data: { displayName, invitationToken: invitation.token },
+  });
   expect(response.status()).toBe(200);
   return response.json() as Promise<SessionResponse>;
+}
+
+export async function createInvitation(
+  request: APIRequestContext,
+  organizer: Session,
+): Promise<{ url: string; token: string }> {
+  const response = await request.post(`/api/rooms/${organizer.roomId}/invitations`, {
+    headers: auth(organizer),
+    data: {},
+  });
+  expect(response.status()).toBe(200);
+  const { invitationUrl } = await response.json() as { invitationUrl: string };
+  const url = new URL(invitationUrl);
+  return { url: invitationUrl, token: new URLSearchParams(url.hash.slice(1)).get("invite")! };
 }
 
 export async function snapshot(

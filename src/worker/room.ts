@@ -3,8 +3,10 @@ import { z } from "zod";
 import {
   createRoomSchema,
   finalizeSchema,
+  invitationSchema,
   joinRoomSchema,
   messageSchema,
+  renameParticipantSchema,
   voteSchema,
 } from "../shared/schemas";
 import type {
@@ -134,7 +136,7 @@ export class RallyRoom extends DurableObject<Env> {
         updated_at INTEGER NOT NULL,
         finalized_proposal_id TEXT,
         workflow_status TEXT NOT NULL DEFAULT 'idle',
-        account_required INTEGER NOT NULL DEFAULT 0
+        invite_required INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS participants (
@@ -144,8 +146,7 @@ export class RallyRoom extends DurableObject<Env> {
         rsvp_status TEXT NOT NULL DEFAULT 'pending',
         token_hash TEXT NOT NULL UNIQUE,
         joined_at INTEGER NOT NULL,
-        last_seen_at INTEGER NOT NULL,
-        user_id TEXT
+        last_seen_at INTEGER NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS messages (
@@ -217,16 +218,22 @@ export class RallyRoom extends DurableObject<Env> {
         created_at INTEGER NOT NULL,
         completed_at INTEGER
       );
+
+      CREATE TABLE IF NOT EXISTS invitations (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_by_participant_id TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        revoked_at INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS invitations_active ON invitations(revoked_at, expires_at);
     `);
     const roomColumns = sql.exec<{ name: string }>("PRAGMA table_info(room)").toArray();
-    if (!roomColumns.some((column) => column.name === "account_required")) {
-      sql.exec("ALTER TABLE room ADD COLUMN account_required INTEGER NOT NULL DEFAULT 0");
+    if (!roomColumns.some((column) => column.name === "invite_required")) {
+      // Rooms created before private invitation links remain joinable for backwards compatibility.
+      sql.exec("ALTER TABLE room ADD COLUMN invite_required INTEGER NOT NULL DEFAULT 0");
     }
-    const participantColumns = sql.exec<{ name: string }>("PRAGMA table_info(participants)").toArray();
-    if (!participantColumns.some((column) => column.name === "user_id")) {
-      sql.exec("ALTER TABLE participants ADD COLUMN user_id TEXT");
-    }
-    sql.exec("CREATE UNIQUE INDEX IF NOT EXISTS participants_user_id ON participants(user_id) WHERE user_id IS NOT NULL");
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -234,8 +241,13 @@ export class RallyRoom extends DurableObject<Env> {
       const url = new URL(request.url);
       if (request.method === "POST" && url.pathname === "/initialize") return await this.initialize(request);
       if (request.method === "POST" && url.pathname === "/join") return await this.join(request);
-      if (request.method === "GET" && url.pathname === "/account-session") return await this.accountSession(request);
+      if (request.method === "GET" && url.pathname === "/session") return await this.session(request);
       if (request.method === "GET" && url.pathname === "/identity") return await this.identity(request);
+      if (request.method === "POST" && url.pathname === "/invitation") return await this.invitationInfo(request);
+      if (request.method === "POST" && url.pathname === "/invitations") return await this.createInvitation(request);
+      if (request.method === "POST" && url.pathname === "/invitations/reset") return await this.resetInvitations(request);
+      if (request.method === "PATCH" && url.pathname === "/participant") return await this.renameParticipant(request);
+      if (request.method === "POST" && url.pathname === "/participant/rotate-access") return await this.rotateAccess(request);
       if (request.method === "GET" && url.pathname === "/snapshot") return await this.snapshotResponse(request);
       if (request.method === "GET" && url.pathname === "/ws") return await this.connectWebSocket(request);
       if (request.method === "POST" && url.pathname === "/message") return await this.postMessage(request);
@@ -254,7 +266,6 @@ export class RallyRoom extends DurableObject<Env> {
   private async initialize(request: Request): Promise<Response> {
     if (this.roomExists()) throw new HttpError(409, "Room already exists");
     const input = await parseJson(request, initializeSchema);
-    const userId = request.headers.get("x-rally-user-id");
     const participantId = crypto.randomUUID();
     const token = randomToken();
     const tokenHash = await hashToken(token);
@@ -263,22 +274,20 @@ export class RallyRoom extends DurableObject<Env> {
 
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
-        "INSERT INTO room (id, title, prompt, stage, state_version, created_at, updated_at, workflow_status, account_required) VALUES (?, ?, ?, 'collecting', 1, ?, ?, 'idle', ?)",
+        "INSERT INTO room (id, title, prompt, stage, state_version, created_at, updated_at, workflow_status, invite_required) VALUES (?, ?, ?, 'collecting', 1, ?, ?, 'idle', 1)",
         input.roomId,
         title,
         input.prompt,
         now,
         now,
-        userId ? 1 : 0,
       );
       this.ctx.storage.sql.exec(
-        "INSERT INTO participants (id, display_name, role, rsvp_status, token_hash, joined_at, last_seen_at, user_id) VALUES (?, ?, 'organizer', 'yes', ?, ?, ?, ?)",
+        "INSERT INTO participants (id, display_name, role, rsvp_status, token_hash, joined_at, last_seen_at) VALUES (?, ?, 'organizer', 'yes', ?, ?, ?)",
         participantId,
         input.organizerName,
         tokenHash,
         now,
         now,
-        userId,
       );
       const messageId = crypto.randomUUID();
       this.ctx.storage.sql.exec(
@@ -318,21 +327,8 @@ export class RallyRoom extends DurableObject<Env> {
   private async join(request: Request): Promise<Response> {
     this.assertRoomExists();
     const input = await parseJson(request, joinRoomSchema);
-    const userId = request.headers.get("x-rally-user-id");
-    const accountRequired = Boolean(this.ctx.storage.sql.exec<{ account_required: number }>("SELECT account_required FROM room").one().account_required);
-    if (accountRequired && !userId) throw new HttpError(401, "Sign in through a valid invitation to join this room");
-    if (userId) {
-      const existing = this.participantForUser(userId);
-      if (existing) {
-        if (existing.displayName !== input.displayName) {
-          this.ctx.storage.sql.exec("UPDATE participants SET display_name = ? WHERE id = ?", input.displayName, existing.id);
-          this.bumpVersion();
-          await this.broadcastSnapshot();
-        }
-        this.touchParticipant(existing.id);
-        return json({ roomId: this.getRoom().id, participantId: existing.id, role: existing.role, snapshot: this.getSnapshot() });
-      }
-    }
+    const inviteRequired = Boolean(this.ctx.storage.sql.exec<{ invite_required: number }>("SELECT invite_required FROM room").one().invite_required);
+    if (inviteRequired) await this.requireInvitation(input.invitationToken ?? "");
     const id = crypto.randomUUID();
     const token = randomToken();
     const tokenHash = await hashToken(token);
@@ -340,13 +336,12 @@ export class RallyRoom extends DurableObject<Env> {
 
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
-        "INSERT INTO participants (id, display_name, role, rsvp_status, token_hash, joined_at, last_seen_at, user_id) VALUES (?, ?, 'participant', 'pending', ?, ?, ?, ?)",
+        "INSERT INTO participants (id, display_name, role, rsvp_status, token_hash, joined_at, last_seen_at) VALUES (?, ?, 'participant', 'pending', ?, ?, ?)",
         id,
         input.displayName,
         tokenHash,
         now,
         now,
-        userId,
       );
       this.insertSystemMessage(`${input.displayName} joined the room`, now);
       this.addEvent("participant.joined", id, { displayName: input.displayName });
@@ -356,19 +351,73 @@ export class RallyRoom extends DurableObject<Env> {
     return json({ roomId: this.getRoom().id, participantId: id, token, role: "participant", snapshot: this.getSnapshot() });
   }
 
-  private async accountSession(request: Request): Promise<Response> {
+  private async session(request: Request): Promise<Response> {
     const participant = await this.authenticate(request);
-    const encodedName = request.headers.get("x-rally-display-name");
-    if (encodedName) {
-      const displayName = decodeURIComponent(encodedName).trim().slice(0, 60);
-      if (displayName && displayName !== participant.displayName) {
-        this.ctx.storage.sql.exec("UPDATE participants SET display_name = ? WHERE id = ?", displayName, participant.id);
-        this.bumpVersion();
-        await this.broadcastSnapshot();
-      }
-    }
     this.touchParticipant(participant.id);
-    return json({ roomId: this.getRoom().id, participantId: participant.id, role: participant.role, snapshot: this.getSnapshot() });
+    return json({
+      roomId: this.getRoom().id,
+      participantId: participant.id,
+      token: bearerToken(request),
+      role: participant.role,
+      snapshot: this.getSnapshot(),
+    });
+  }
+
+  private async invitationInfo(request: Request): Promise<Response> {
+    const input = await parseJson(request, invitationSchema);
+    await this.requireInvitation(input.invitationToken);
+    return json({ roomId: this.getRoom().id, title: this.getRoom().title });
+  }
+
+  private async createInvitation(request: Request): Promise<Response> {
+    const participant = await this.authenticate(request);
+    if (participant.role !== "organizer") throw new HttpError(403, "Only the organizer can invite people");
+    return json(await this.issueInvitation(request, participant.id));
+  }
+
+  private async resetInvitations(request: Request): Promise<Response> {
+    const participant = await this.authenticate(request);
+    if (participant.role !== "organizer") throw new HttpError(403, "Only the organizer can reset invitations");
+    this.ctx.storage.sql.exec("UPDATE invitations SET revoked_at = ? WHERE revoked_at IS NULL", Date.now());
+    return json(await this.issueInvitation(request, participant.id));
+  }
+
+  private async issueInvitation(request: Request, participantId: string): Promise<{ invitationUrl: string }> {
+    const token = randomToken();
+    const now = Date.now();
+    this.ctx.storage.sql.exec(
+      "INSERT INTO invitations (id, token_hash, created_by_participant_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+      crypto.randomUUID(), await hashToken(token), participantId, now + 30 * 24 * 60 * 60 * 1_000, now,
+    );
+    const origin = request.headers.get("x-rally-origin") ?? "https://fanpilot.app";
+    return { invitationUrl: `${origin}/join/${this.getRoom().id}#invite=${token}` };
+  }
+
+  private async requireInvitation(token: string): Promise<void> {
+    if (!/^[0-9a-f]{64}$/i.test(token)) throw new HttpError(404, "This invitation is invalid or has expired");
+    const row = this.ctx.storage.sql.exec<{ expires_at: number; revoked_at: number | null }>(
+      "SELECT expires_at, revoked_at FROM invitations WHERE token_hash = ?", await hashToken(token),
+    ).toArray()[0];
+    if (!row || row.revoked_at || row.expires_at <= Date.now()) throw new HttpError(404, "This invitation is invalid or has expired");
+  }
+
+  private async renameParticipant(request: Request): Promise<Response> {
+    const participant = await this.authenticate(request);
+    const input = await parseJson(request, renameParticipantSchema);
+    if (input.displayName !== participant.displayName) {
+      this.ctx.storage.sql.exec("UPDATE participants SET display_name = ? WHERE id = ?", input.displayName, participant.id);
+      this.addEvent("participant.renamed", participant.id, { displayName: input.displayName });
+      this.bumpVersion();
+      await this.broadcastSnapshot();
+    }
+    return json(this.getSnapshot());
+  }
+
+  private async rotateAccess(request: Request): Promise<Response> {
+    const participant = await this.authenticate(request);
+    const token = randomToken();
+    this.ctx.storage.sql.exec("UPDATE participants SET token_hash = ? WHERE id = ?", await hashToken(token), participant.id);
+    return json({ roomId: this.getRoom().id, participantId: participant.id, token, role: participant.role, snapshot: this.getSnapshot() });
   }
 
   private async identity(request: Request): Promise<Response> {
@@ -382,12 +431,11 @@ export class RallyRoom extends DurableObject<Env> {
   }
 
   private async connectWebSocket(request: Request): Promise<Response> {
-    const userId = request.headers.get("x-rally-user-id");
     const protocols = (request.headers.get("sec-websocket-protocol") ?? "")
       .split(",")
       .map((value) => value.trim());
     if (protocols[0] !== "rally") throw new HttpError(401, "Missing room session");
-    const participant = userId ? this.participantForUser(userId) : await this.participantForToken(protocols[1] ?? "");
+    const participant = await this.participantForToken(protocols[1] ?? "");
     if (!participant) throw new HttpError(401, "Invalid room session");
 
     const pair = new WebSocketPair();
@@ -851,15 +899,7 @@ export class RallyRoom extends DurableObject<Env> {
   }
 
   private async authenticate(request: Request): Promise<Participant> {
-    const userId = request.headers.get("x-rally-user-id");
-    if (userId) {
-      const participant = this.participantForUser(userId);
-      if (participant) return participant;
-      throw new HttpError(403, "You are not a member of this room");
-    }
-    const header = request.headers.get("authorization") ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-    const participant = await this.participantForToken(token);
+    const participant = await this.participantForToken(bearerToken(request));
     if (!participant) throw new HttpError(401, "Invalid room session");
     return participant;
   }
@@ -871,24 +911,6 @@ export class RallyRoom extends DurableObject<Env> {
       .exec<ParticipantRow & { token_hash: string }>(
         "SELECT id, display_name, role, rsvp_status, token_hash, joined_at, last_seen_at FROM participants WHERE token_hash = ?",
         tokenHash,
-      )
-      .toArray()[0];
-    if (!row) return null;
-    return {
-      id: row.id,
-      displayName: row.display_name,
-      role: row.role,
-      rsvpStatus: row.rsvp_status,
-      joinedAt: row.joined_at,
-      lastSeenAt: row.last_seen_at,
-    };
-  }
-
-  private participantForUser(userId: string): Participant | null {
-    const row = this.ctx.storage.sql
-      .exec<ParticipantRow & { user_id: string }>(
-        "SELECT id, display_name, role, rsvp_status, joined_at, last_seen_at, user_id FROM participants WHERE user_id = ?",
-        userId,
       )
       .toArray()[0];
     if (!row) return null;
@@ -927,4 +949,9 @@ function randomToken(): string {
 async function hashToken(token: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function bearerToken(request: Request): string {
+  const header = request.headers.get("authorization") ?? "";
+  return header.startsWith("Bearer ") ? header.slice(7) : "";
 }

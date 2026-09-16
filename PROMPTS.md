@@ -114,3 +114,13 @@ This file records the human prompts used while designing and implementing Rally.
 > after you're done with this change, make sure we commit properly with a good message to git
 
 > ok test it out 100%
+
+> I have a resend account, you can use that to set things up
+
+> is tehr alternative for auth without email that makes sense?
+
+> any other ideas? let's keep it simple
+
+> yes that works, plan that out
+
+> yes implement this - is there anything to cleanup from the old approaches? do that too

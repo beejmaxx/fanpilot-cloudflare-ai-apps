@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite dev",
-    "dev:e2e": "wrangler d1 migrations apply rally-auth --local && vite dev",
+    "dev:e2e": "vite dev",
     "build": "tsc -b && vite build",
     "preview": "npm run build && vite preview",
     "deploy": "npm run build && wrangler deploy",
@@ -17,7 +17,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
-    "test:smoke:auth-remote": "NODE_USE_ENV_PROXY=1 node scripts/remote-auth-smoke.mjs",
+    "test:smoke:access-remote": "NODE_USE_ENV_PROXY=1 node scripts/remote-link-smoke.mjs",
     "test:smoke:remote": "NODE_USE_ENV_PROXY=1 node scripts/remote-ai-smoke.mjs"
   },
   "dependencies": {

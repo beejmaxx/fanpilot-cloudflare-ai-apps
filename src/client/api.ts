@@ -1,7 +1,15 @@
-import type { AccountUser, RoomSnapshot, RoomSummary, Session } from "../shared/types";
+import type { ParticipantRole, RoomSnapshot, Session } from "../shared/types";
 
-interface SessionResponse extends Session {
+export interface SessionResponse extends Session {
   snapshot: RoomSnapshot;
+}
+
+export interface RecentRoom {
+  roomId: string;
+  title: string;
+  role: ParticipantRole;
+  participantName: string;
+  updatedAt: number;
 }
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
@@ -18,40 +26,7 @@ export class ApiRequestError extends Error {
   constructor(message: string, public readonly status: number) { super(message); }
 }
 
-export type MagicLinkIntent =
-  | { type: "create"; prompt: string }
-  | { type: "join"; invitationToken: string }
-  | { type: "restore"; roomId: string }
-  | { type: "rooms" };
-
 export const api = {
-  me() {
-    return request<{ user: AccountUser | null }>("/api/auth/me");
-  },
-
-  requestMagicLink(email: string, displayName: string, intent: MagicLinkIntent) {
-    return request<{ sent: true; devMagicLink?: string }>("/api/auth/magic-link", {
-      method: "POST",
-      body: JSON.stringify({ email, displayName, intent }),
-    });
-  },
-
-  logout() {
-    return request<{ ok: true }>("/api/auth/logout", { method: "POST", body: "{}" });
-  },
-
-  listRooms() {
-    return request<{ rooms: RoomSummary[] }>("/api/account/rooms");
-  },
-
-  invitation(token: string) {
-    return request<{ roomId: string; title: string }>(`/api/invitations/${token}`);
-  },
-
-  acceptInvitation(token: string) {
-    return request<SessionResponse>(`/api/invitations/${token}/accept`, { method: "POST", body: "{}" });
-  },
-
   createRoom(prompt: string, organizerName: string) {
     return request<SessionResponse>("/api/rooms", {
       method: "POST",
@@ -59,20 +34,51 @@ export const api = {
     });
   },
 
-  joinRoom(roomId: string, displayName: string) {
-    return request<SessionResponse>(`/api/rooms/${roomId}/join`, {
+  invitation(roomId: string, invitationToken: string) {
+    return request<{ roomId: string; title: string }>(`/api/rooms/${roomId}/invitation`, {
       method: "POST",
-      body: JSON.stringify({ displayName }),
+      body: JSON.stringify({ invitationToken }),
     });
   },
 
-  resumeRoom(roomId: string) {
-    return request<SessionResponse>(`/api/rooms/${roomId}/account-session`);
+  joinRoom(roomId: string, displayName: string, invitationToken: string) {
+    return request<SessionResponse>(`/api/rooms/${roomId}/join`, {
+      method: "POST",
+      body: JSON.stringify({ displayName, invitationToken }),
+    });
+  },
+
+  resumeRoom(roomId: string, token: string) {
+    return request<SessionResponse>(`/api/rooms/${roomId}/session`, {}, token);
   },
 
   createInvitation(session: Session) {
     return request<{ invitationUrl: string }>(
       `/api/rooms/${session.roomId}/invitations`,
+      { method: "POST", body: "{}" },
+      session.token,
+    );
+  },
+
+  resetInvitations(session: Session) {
+    return request<{ invitationUrl: string }>(
+      `/api/rooms/${session.roomId}/invitations/reset`,
+      { method: "POST", body: "{}" },
+      session.token,
+    );
+  },
+
+  renameParticipant(session: Session, displayName: string) {
+    return request<RoomSnapshot>(
+      `/api/rooms/${session.roomId}/participant`,
+      { method: "PATCH", body: JSON.stringify({ displayName }) },
+      session.token,
+    );
+  },
+
+  rotateAccess(session: Session) {
+    return request<SessionResponse>(
+      `/api/rooms/${session.roomId}/participant/rotate-access`,
       { method: "POST", body: "{}" },
       session.token,
     );
@@ -117,9 +123,9 @@ export const api = {
 };
 
 const sessionKey = (roomId: string) => `rally:session:${roomId}`;
+const recentRoomsKey = "rally:recent-rooms";
 
 export function saveSession(session: Session): void {
-  if (!session.token) return;
   localStorage.setItem(sessionKey(session.roomId), JSON.stringify(session));
 }
 
@@ -127,11 +133,39 @@ export function loadSession(roomId: string): Session | null {
   const value = localStorage.getItem(sessionKey(roomId));
   if (!value) return null;
   try {
-    return JSON.parse(value) as Session;
+    const session = JSON.parse(value) as Session;
+    return session.token ? session : null;
   } catch {
     localStorage.removeItem(sessionKey(roomId));
     return null;
   }
+}
+
+export function rememberRoom(session: Session, snapshot: RoomSnapshot): void {
+  const participantName = snapshot.participants.find((item) => item.id === session.participantId)?.displayName ?? "You";
+  const room: RecentRoom = {
+    roomId: session.roomId,
+    title: snapshot.room.title,
+    role: session.role,
+    participantName,
+    updatedAt: Date.now(),
+  };
+  const rooms = loadRecentRooms().filter((item) => item.roomId !== session.roomId);
+  localStorage.setItem(recentRoomsKey, JSON.stringify([room, ...rooms].slice(0, 12)));
+}
+
+export function loadRecentRooms(): RecentRoom[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(recentRoomsKey) ?? "[]") as RecentRoom[];
+    return Array.isArray(value) ? value.filter((item) => item?.roomId && item?.title) : [];
+  } catch {
+    localStorage.removeItem(recentRoomsKey);
+    return [];
+  }
+}
+
+export function personalRoomUrl(session: Session): string {
+  return `${location.origin}/room/${session.roomId}#access=${session.token}`;
 }
 
 export function roomWebSocketUrl(session: Session): string {
@@ -140,5 +174,5 @@ export function roomWebSocketUrl(session: Session): string {
 }
 
 export function roomWebSocketProtocols(session: Session): string[] {
-  return session.token ? ["rally", session.token] : ["rally"];
+  return ["rally", session.token];
 }

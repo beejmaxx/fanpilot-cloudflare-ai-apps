@@ -7,10 +7,9 @@ import {
   Clock3,
   Copy,
   DollarSign,
+  KeyRound,
   Link2,
   LoaderCircle,
-  LogOut,
-  Mail,
   MapPin,
   MessageCircle,
   RefreshCw,
@@ -21,10 +20,20 @@ import {
   Vote as VoteIcon,
   WalletCards,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { formatTime, initials, pluralize } from "../shared/format";
-import type { AccountUser, Constraint, Proposal, RoomSnapshot, RoomSummary, Session } from "../shared/types";
-import { ApiRequestError, api, loadSession, roomWebSocketProtocols, roomWebSocketUrl } from "./api";
+import type { Constraint, Proposal, RoomSnapshot, Session } from "../shared/types";
+import {
+  ApiRequestError,
+  api,
+  loadRecentRooms,
+  loadSession,
+  personalRoomUrl,
+  rememberRoom,
+  roomWebSocketProtocols,
+  roomWebSocketUrl,
+  saveSession,
+} from "./api";
 
 const examples = [
   "Plan a birthday dinner in Shanghai next Saturday for six people, around ¥300 each.",
@@ -50,14 +59,13 @@ export function App() {
 
   const navigate = useCallback((next: string) => {
     history.pushState({}, "", next);
-    setPath(next);
+    setPath(new URL(next, location.origin).pathname);
   }, []);
 
   const roomMatch = path.match(/^\/room\/([0-9a-f-]+)$/i);
   if (roomMatch) return <RoomPage roomId={roomMatch[1]} navigate={navigate} />;
-  const invitationMatch = path.match(/^\/join\/([0-9a-f]{64})$/i);
-  if (invitationMatch) return <InvitationPage token={invitationMatch[1]} navigate={navigate} />;
-  if (path === "/rooms") return <RoomsPage navigate={navigate} />;
+  const invitationMatch = path.match(/^\/join\/([0-9a-f-]+)$/i);
+  if (invitationMatch) return <InvitationPage roomId={invitationMatch[1]} navigate={navigate} />;
   return <LandingPage navigate={navigate} />;
 }
 
@@ -73,19 +81,9 @@ function Brand({ compact = false }: { compact?: boolean }) {
 function LandingPage({ navigate }: { navigate: (path: string) => void }) {
   const [prompt, setPrompt] = useState(examples[0]);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [account, setAccount] = useState<AccountUser | null>(null);
-  const [sentTo, setSentTo] = useState("");
-  const [devMagicLink, setDevMagicLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    api.me().then(({ user }) => {
-      setAccount(user);
-      if (user) { setName(user.displayName); setEmail(user.email); }
-    }).catch(() => undefined);
-  }, []);
+  const recentRooms = loadRecentRooms();
 
   async function createRoom(event: FormEvent) {
     event.preventDefault();
@@ -96,14 +94,10 @@ function LandingPage({ navigate }: { navigate: (path: string) => void }) {
     }
     setBusy(true);
     try {
-      if (account) {
-        const result = await api.createRoom(prompt, name);
-        navigate(`/room/${result.roomId}`);
-      } else {
-        const result = await api.requestMagicLink(email, name, { type: "create", prompt });
-        setSentTo(email);
-        setDevMagicLink(result.devMagicLink ?? "");
-      }
+      const result = await api.createRoom(prompt, name);
+      saveSession(result);
+      rememberRoom(result, result.snapshot);
+      navigate(`/room/${result.roomId}#access=${result.token}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create the room");
     } finally {
@@ -111,11 +105,16 @@ function LandingPage({ navigate }: { navigate: (path: string) => void }) {
     }
   }
 
+  function openRecent(roomId: string) {
+    const session = loadSession(roomId);
+    navigate(session ? `/room/${roomId}#access=${session.token}` : `/room/${roomId}`);
+  }
+
   return (
     <div className="landing-shell">
       <nav className="landing-nav">
         <Brand />
-        {account ? <button className="secondary-button" type="button" onClick={() => navigate("/rooms")}>My rooms</button> : <span className="nav-note">Make the plan, together.</span>}
+        <span className="nav-note">Make the plan, together.</span>
       </nav>
       <main className="hero">
         <section className="hero-copy">
@@ -136,62 +135,43 @@ function LandingPage({ navigate }: { navigate: (path: string) => void }) {
             <span className="mini-mark"><Sparkles size={16} /></span>
             <div><h2 id="create-heading">What are you planning?</h2><p>Start with whatever you already know.</p></div>
           </div>
-          {sentTo ? <MagicLinkSent email={sentTo} devMagicLink={devMagicLink} /> : <form onSubmit={createRoom}>
+          <form onSubmit={createRoom}>
             <label htmlFor="plan-prompt">Describe the plan</label>
-            <textarea
-              id="plan-prompt"
-              rows={5}
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              minLength={8}
-              maxLength={1500}
-              required
-            />
+            <textarea id="plan-prompt" rows={5} value={prompt} onChange={(event) => setPrompt(event.target.value)} minLength={8} maxLength={1500} required />
             <label htmlFor="organizer-name">Your name</label>
-            <input
-              id="organizer-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="How your friends know you"
-              maxLength={60}
-              required
-            />
-            {!account && <>
-              <label htmlFor="organizer-email">Your email</label>
-              <input
-                id="organizer-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                autoComplete="email"
-                maxLength={254}
-                required
-              />
-            </>}
+            <input id="organizer-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="How your friends know you" maxLength={60} required />
             {error && <p className="form-error" role="alert">{error}</p>}
             <button className="primary-button create-button" disabled={busy}>
-              {busy ? <><LoaderCircle className="spin" size={18} /> {account ? "Starting the room…" : "Sending secure link…"}</> : <>{account ? "Create planning room" : "Email me a sign-in link"} <ArrowRight size={18} /></>}
+              {busy ? <><LoaderCircle className="spin" size={18} /> Starting the room…</> : <>Create planning room <ArrowRight size={18} /></>}
             </button>
-          </form>}
+          </form>
           <div className="example-row" aria-label="Example plans">
             <span>Try:</span>
             {examples.slice(1).map((example, index) => (
               <button type="button" key={example} onClick={() => setPrompt(example)}>{index === 0 ? "Hiking trip" : "Game night"}</button>
             ))}
           </div>
+          {recentRooms.length > 0 && <div className="recent-rooms">
+            <p>Recent on this device</p>
+            {recentRooms.slice(0, 3).map((room) => (
+              <button key={room.roomId} type="button" onClick={() => openRecent(room.roomId)}>
+                <span><strong>{room.title}</strong><small>{room.participantName} · {room.role}</small></span>
+                <ArrowRight size={16} />
+              </button>
+            ))}
+          </div>}
         </section>
       </main>
       <footer className="landing-footer">
         <span>Built on Cloudflare Workers AI, Workflows, and Durable Objects</span>
-        <span>Rooms stay available when everyone leaves and returns.</span>
+        <span>Keep your private return link to reopen a room anywhere.</span>
       </footer>
     </div>
   );
 }
 
 function RoomPage({ roomId, navigate }: { roomId: string; navigate: (path: string) => void }) {
-  const [session, setSession] = useState<Session | null>(() => loadSession(roomId));
+  const [session, setSession] = useState<Session | null>(null);
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ message: string; status?: number } | null>(null);
@@ -200,19 +180,17 @@ function RoomPage({ roomId, navigate }: { roomId: string; navigate: (path: strin
   useEffect(() => {
     let cancelled = false;
     const openRoom = async () => {
+      const accessToken = new URLSearchParams(location.hash.slice(1)).get("access");
       const saved = loadSession(roomId);
-      if (saved) {
-        try {
-          const value = await api.getSnapshot(saved);
-          if (!cancelled) { setSession(saved); setSnapshot(value); setError(null); }
-          return;
-        } catch (caught) {
-          if (!(caught instanceof ApiRequestError) || caught.status !== 401) throw caught;
-        }
-      }
-      const resumed = await api.resumeRoom(roomId);
+      const candidate = accessToken
+        ? { roomId, participantId: "", role: "participant" as const, token: accessToken }
+        : saved;
+      if (!candidate) throw new ApiRequestError("Open your private return link, or ask the organizer for a new invitation.", 401);
+      const resumed = await api.resumeRoom(roomId, candidate.token);
       if (!cancelled) {
-        setSession({ roomId, participantId: resumed.participantId, role: resumed.role });
+        saveSession(resumed);
+        rememberRoom(resumed, resumed.snapshot);
+        setSession(resumed);
         setSnapshot(resumed.snapshot);
         setError(null);
       }
@@ -233,17 +211,21 @@ function RoomPage({ roomId, navigate }: { roomId: string; navigate: (path: strin
     let socket: WebSocket | null = null;
     let retry: number | undefined;
     let stopped = false;
-
     const connect = () => {
+      if (!navigator.onLine) {
+        setConnection("offline");
+        return;
+      }
       setConnection("connecting");
-      // Pass the opaque room session as a WebSocket subprotocol value so it is
-      // not exposed in the request URL or routine access logs.
       socket = new WebSocket(roomWebSocketUrl(session), roomWebSocketProtocols(session));
       socket.onopen = () => setConnection("live");
       socket.onmessage = (event) => {
         try {
           const payload = JSON.parse(String(event.data)) as { type: string; snapshot?: RoomSnapshot };
-          if (payload.type === "snapshot" && payload.snapshot) setSnapshot(payload.snapshot);
+          if (payload.type === "snapshot" && payload.snapshot) {
+            setSnapshot(payload.snapshot);
+            rememberRoom(session, payload.snapshot);
+          }
         } catch {
           // Ignore malformed frames and wait for the next canonical snapshot.
         }
@@ -251,110 +233,89 @@ function RoomPage({ roomId, navigate }: { roomId: string; navigate: (path: strin
       socket.onerror = () => setConnection("offline");
       socket.onclose = () => {
         setConnection("offline");
-        if (!stopped) retry = window.setTimeout(connect, 1_500);
+        if (!stopped && navigator.onLine) retry = window.setTimeout(connect, 1_500);
       };
     };
+    const wentOffline = () => {
+      setConnection("offline");
+      socket?.close(4000, "browser offline");
+    };
+    const cameOnline = () => {
+      if (retry) clearTimeout(retry);
+      connect();
+    };
+    addEventListener("offline", wentOffline);
+    addEventListener("online", cameOnline);
     connect();
     return () => {
       stopped = true;
       if (retry) clearTimeout(retry);
+      removeEventListener("offline", wentOffline);
+      removeEventListener("online", cameOnline);
       socket?.close(1000, "leaving room");
     };
   }, [session]);
 
-  if (loading && !snapshot) return <FullPageStatus label="Opening your planning room…" />;
-  if (!session || (error && !snapshot)) return <RoomAccessPage roomId={roomId} error={error} navigate={navigate} />;
-  if (!snapshot) return <FullPageStatus label="Connecting to Rally…" />;
-  return <PlanningRoom session={session} snapshot={snapshot} setSnapshot={setSnapshot} connection={connection} />;
-}
-
-function RoomAccessPage({ roomId, error, navigate }: { roomId: string; error: { message: string; status?: number } | null; navigate: (path: string) => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [sentTo, setSentTo] = useState("");
-  const [devMagicLink, setDevMagicLink] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState("");
-
-  async function signIn(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setFormError("");
-    try {
-      const result = await api.requestMagicLink(email, name, { type: "restore", roomId });
-      setSentTo(email);
-      setDevMagicLink(result.devMagicLink ?? "");
-    } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : "Could not send a sign-in link");
-    } finally {
-      setBusy(false);
-    }
+  function updateSession(next: Session, nextSnapshot: RoomSnapshot) {
+    saveSession(next);
+    rememberRoom(next, nextSnapshot);
+    history.replaceState({}, "", `/room/${next.roomId}#access=${next.token}`);
+    setSession(next);
+    setSnapshot(nextSnapshot);
   }
 
+  if (loading && !snapshot) return <FullPageStatus label="Opening your planning room…" />;
+  if (!session || (error && !snapshot)) return <RoomAccessPage error={error} navigate={navigate} />;
+  if (!snapshot) return <FullPageStatus label="Connecting to Rally…" />;
+  return <PlanningRoom session={session} snapshot={snapshot} setSnapshot={setSnapshot} connection={connection} updateSession={updateSession} />;
+}
+
+function RoomAccessPage({ error, navigate }: { error: { message: string; status?: number } | null; navigate: (path: string) => void }) {
   return (
     <div className="join-shell">
       <button className="brand brand-button" type="button" onClick={() => navigate("/")}><span className="brand-mark"><Sparkles size={20} /></span><span>Rally</span></button>
       <section className="join-card">
-        <div className="join-illustration"><Mail size={30} /></div>
-        {error?.status === 403 ? <>
-          <p className="eyebrow">Invitation required</p>
-          <h1>This room is private</h1>
-          <p>{error.message}</p>
-          <button className="secondary-button" type="button" onClick={() => navigate("/")}>Back to Rally</button>
-        </> : sentTo ? <MagicLinkSent email={sentTo} devMagicLink={devMagicLink} /> : <>
-          <p className="eyebrow">Welcome back</p>
-          <h1>Open your planning room</h1>
-          <p>Use the same email you joined with and we’ll restore your place.</p>
-          <form onSubmit={signIn}>
-            <label htmlFor="restore-name">Your name</label>
-            <input id="restore-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Display name" maxLength={60} required />
-            <label htmlFor="restore-email">Your email</label>
-            <input id="restore-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" maxLength={254} required />
-            {formError && <p className="form-error" role="alert">{formError}</p>}
-            <button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Mail size={18} />} Email me a sign-in link</button>
-          </form>
-        </>}
+        <div className="join-illustration"><KeyRound size={30} /></div>
+        <p className="eyebrow">Private room</p>
+        <h1>Your return link is needed</h1>
+        <p>{error?.message ?? "This room opens with the private link created for you when you joined."}</p>
+        <button className="primary-button" type="button" onClick={() => navigate("/")}>Back to Rally</button>
       </section>
     </div>
   );
 }
 
-function InvitationPage({ token, navigate }: { token: string; navigate: (path: string) => void }) {
+function InvitationPage({ roomId, navigate }: { roomId: string; navigate: (path: string) => void }) {
+  const invitationToken = new URLSearchParams(location.hash.slice(1)).get("invite") ?? "";
   const [invitation, setInvitation] = useState<{ roomId: string; title: string } | null>(null);
-  const [account, setAccount] = useState<AccountUser | null>(null);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [sentTo, setSentTo] = useState("");
-  const [devMagicLink, setDevMagicLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([api.invitation(token), api.me()])
-      .then(([nextInvitation, { user }]) => {
-        setInvitation(nextInvitation);
-        setAccount(user);
-        if (user) { setName(user.displayName); setEmail(user.email); }
-      })
+    if (!invitationToken) {
+      setError("This invitation link is incomplete. Ask the organizer to copy it again.");
+      return;
+    }
+    api.invitation(roomId, invitationToken)
+      .then(setInvitation)
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not open this invitation"));
-  }, [token]);
+  }, [roomId, invitationToken]);
 
   async function join(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      if (account) {
-        const joined = await api.acceptInvitation(token);
-        navigate(`/room/${joined.roomId}`);
-      } else {
-        const result = await api.requestMagicLink(email, name, { type: "join", invitationToken: token });
-        setSentTo(email);
-        setDevMagicLink(result.devMagicLink ?? "");
-      }
+      const joined = await api.joinRoom(roomId, name, invitationToken);
+      saveSession(joined);
+      rememberRoom(joined, joined.snapshot);
+      navigate(`/room/${joined.roomId}#access=${joined.token}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not join this room");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (!invitation && !error) return <FullPageStatus label="Opening invitation…" />;
@@ -363,77 +324,37 @@ function InvitationPage({ token, navigate }: { token: string; navigate: (path: s
     <button className="brand brand-button" type="button" onClick={() => navigate("/")}><span className="brand-mark"><Sparkles size={20} /></span><span>Rally</span></button>
     <section className="join-card">
       <div className="join-illustration"><Users size={30} /></div>
-      {sentTo ? <MagicLinkSent email={sentTo} devMagicLink={devMagicLink} /> : <>
-        <p className="eyebrow">You’ve been invited</p>
-        <h1>{invitation.title}</h1>
-        <p>{account ? `Continue as ${account.displayName}.` : "Verify your email once so Rally can recognize you on any device."}</p>
-        <form onSubmit={join}>
-          {!account && <>
-            <label htmlFor="invite-name">Your name</label>
-            <input id="invite-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Display name" maxLength={60} required />
-            <label htmlFor="invite-email">Your email</label>
-            <input id="invite-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" maxLength={254} required />
-          </>}
-          {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />} {account ? "Join planning room" : "Email me a sign-in link"}</button>
-        </form>
-      </>}
+      <p className="eyebrow">You’ve been invited</p>
+      <h1>{invitation.title}</h1>
+      <p>Choose the name your group will see. Rally will create a private return link just for you.</p>
+      <form onSubmit={join}>
+        <label htmlFor="invite-name">Your name</label>
+        <input id="invite-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Display name" maxLength={60} required />
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />} Join planning room</button>
+      </form>
     </section>
   </div>;
 }
 
-function RoomsPage({ navigate }: { navigate: (path: string) => void }) {
-  const [account, setAccount] = useState<AccountUser | null>(null);
-  const [rooms, setRooms] = useState<RoomSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [sentTo, setSentTo] = useState("");
-  const [devMagicLink, setDevMagicLink] = useState("");
-
-  useEffect(() => {
-    api.me().then(async ({ user }) => {
-      setAccount(user);
-      if (user) setRooms((await api.listRooms()).rooms);
-    }).catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load rooms"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function signIn(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    try {
-      const result = await api.requestMagicLink(email, name, { type: "rooms" });
-      setSentTo(email); setDevMagicLink(result.devMagicLink ?? "");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not send a sign-in link"); }
-  }
-
-  if (loading) return <FullPageStatus label="Loading your rooms…" />;
-  if (!account) return <div className="join-shell"><button className="brand brand-button" type="button" onClick={() => navigate("/")}><span className="brand-mark"><Sparkles size={20} /></span><span>Rally</span></button><section className="join-card">
-    <div className="join-illustration"><Mail size={30} /></div>
-    {sentTo ? <MagicLinkSent email={sentTo} devMagicLink={devMagicLink} /> : <><p className="eyebrow">Your account</p><h1>Find your planning rooms</h1><p>We’ll email a secure sign-in link.</p><form onSubmit={signIn}><label htmlFor="rooms-name">Your name</label><input id="rooms-name" value={name} onChange={(event) => setName(event.target.value)} required /><label htmlFor="rooms-email">Your email</label><input id="rooms-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />{error && <p className="form-error">{error}</p>}<button className="primary-button"><Mail size={17} /> Email me a sign-in link</button></form></>}
-  </section></div>;
-  return <div className="rooms-shell"><header className="rooms-header"><Brand /><div><span>{account.displayName}</span><button className="text-button" onClick={async () => { await api.logout(); navigate("/"); }}><LogOut size={15} /> Sign out</button></div></header><main className="rooms-main"><div className="rooms-title"><div><p className="eyebrow">Your account</p><h1>My rooms</h1><p>Every plan you organize or join, available on any device.</p></div><button className="primary-button" onClick={() => navigate("/")}>Create a room</button></div>{rooms.length ? <div className="rooms-grid">{rooms.map((room) => <button className="room-card" key={room.id} onClick={() => navigate(`/room/${room.id}`)}><span className={`status-chip ${room.role === "organizer" ? "best" : "soft"}`}>{room.role}</span><h2>{room.title}</h2><p>Updated {new Date(room.updatedAt).toLocaleDateString()}</p><span>Open room <ArrowRight size={15} /></span></button>)}</div> : <div className="rooms-empty"><Users size={28} /><h2>No rooms yet</h2><p>Create a room or open an invitation to get started.</p></div>}</main></div>;
-}
-
-function MagicLinkSent({ email, devMagicLink }: { email: string; devMagicLink: string }) {
-  return <div className="magic-link-sent"><span><Mail size={24} /></span><p className="eyebrow">Check your inbox</p><h2>We emailed your sign-in link</h2><p>Open the message sent to <strong>{email}</strong>. The link expires in 10 minutes.</p>{devMagicLink && <a className="primary-button" href={devMagicLink}>Continue locally <ArrowRight size={17} /></a>}</div>;
-}
-
-function PlanningRoom({ session, snapshot, setSnapshot, connection }: {
+function PlanningRoom({ session, snapshot, setSnapshot, connection, updateSession }: {
   session: Session;
   snapshot: RoomSnapshot;
   setSnapshot: (snapshot: RoomSnapshot) => void;
   connection: "connecting" | "live" | "offline";
+  updateSession: (session: Session, snapshot: RoomSnapshot) => void;
 }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [copied, setCopied] = useState<"invite" | "return" | "">("");
+  const [displayName, setDisplayName] = useState("");
   const messageEnd = useRef<HTMLDivElement>(null);
   const me = snapshot.participants.find((participant) => participant.id === session.participantId);
   const isOrganizer = me?.role === "organizer";
+
+  useEffect(() => { setDisplayName(me?.displayName ?? ""); }, [me?.displayName]);
 
   useEffect(() => {
     messageEnd.current?.scrollIntoView({ block: "nearest" });
@@ -460,11 +381,36 @@ function PlanningRoom({ session, snapshot, setSnapshot, connection }: {
     try {
       const { invitationUrl } = await api.createInvitation(session);
       await navigator.clipboard.writeText(invitationUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1_500);
+      setCopied("invite");
+      setTimeout(() => setCopied(""), 1_500);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create an invitation");
     }
+  }
+
+  async function copyReturnLink() {
+    await navigator.clipboard.writeText(personalRoomUrl(session));
+    setCopied("return");
+    setTimeout(() => setCopied(""), 1_500);
+  }
+
+  async function rename(event: FormEvent) {
+    event.preventDefault();
+    await run("rename", () => api.renameParticipant(session, displayName));
+  }
+
+  async function rotateReturnLink() {
+    setBusy("rotate");
+    setError("");
+    try {
+      const next = await api.rotateAccess(session);
+      updateSession(next, next.snapshot);
+      await navigator.clipboard.writeText(personalRoomUrl(next));
+      setCopied("return");
+      setTimeout(() => setCopied(""), 1_500);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not replace your return link");
+    } finally { setBusy(""); }
   }
 
   return (
@@ -477,7 +423,13 @@ function PlanningRoom({ session, snapshot, setSnapshot, connection }: {
         <div className="room-actions">
           <span className={`connection ${connection}`}><span />{connection === "live" ? "Live" : connection === "connecting" ? "Connecting" : "Reconnecting"}</span>
           <AvatarStack participants={snapshot.participants} />
-          <button className="secondary-button invite-button" type="button" onClick={copyInvite}>{copied ? <Check size={16} /> : <Link2 size={16} />}{copied ? "Copied" : "Invite"}</button>
+          <button className="secondary-button invite-button" type="button" aria-expanded={accessOpen} onClick={() => setAccessOpen((open) => !open)}><Link2 size={16} /> Share & access</button>
+          {accessOpen && <section className="access-menu" aria-label="Share and access settings">
+            {isOrganizer && <div className="access-action"><span><strong>Invite people</strong><small>Anyone with this link can join as themselves.</small></span><button className="primary-button" type="button" onClick={copyInvite}>{copied === "invite" ? <Check size={15} /> : <Copy size={15} />}{copied === "invite" ? "Copied" : "Copy invite"}</button></div>}
+            <div className="access-action"><span><strong>Your private return link</strong><small>Keep this private. It opens the room as you.</small></span><button className="secondary-button" type="button" onClick={copyReturnLink}>{copied === "return" ? <Check size={15} /> : <KeyRound size={15} />}{copied === "return" ? "Copied" : "Copy my link"}</button></div>
+            <form className="rename-form" onSubmit={rename}><label htmlFor="display-name">Name shown in this room</label><div><input id="display-name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={60} required /><button className="secondary-button" disabled={busy === "rename"}>Save</button></div></form>
+            <button className="text-button rotate-link" type="button" disabled={busy === "rotate"} onClick={rotateReturnLink}>Replace my return link</button>
+          </section>}
         </div>
       </header>
       <StageBar stage={snapshot.room.stage} />
