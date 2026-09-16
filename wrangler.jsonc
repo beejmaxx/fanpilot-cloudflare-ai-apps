@@ -10,7 +10,7 @@
   },
   "routes": [
     {
-      "pattern": "rally.fanpilot.app",
+      "pattern": "fanpilot.app",
       "custom_domain": true
     }
   ],

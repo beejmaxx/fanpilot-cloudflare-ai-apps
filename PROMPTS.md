@@ -90,3 +90,5 @@ This file records the human prompts used while designing and implementing Rally.
 > can we deploy this to a public URL? do you need to use one of my existing cloudflare domains to do this?
 
 > yes use fanpilot.app
+
+> use the apex, doens't need to point to orbrunner
