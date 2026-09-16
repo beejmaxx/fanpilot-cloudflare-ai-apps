@@ -10,8 +10,8 @@
   },
   "routes": [
     {
-      "pattern": "fanpilot.app",
-      "custom_domain": true
+      "pattern": "fanpilot.app/*",
+      "zone_name": "fanpilot.app"
     }
   ],
   "assets": {
