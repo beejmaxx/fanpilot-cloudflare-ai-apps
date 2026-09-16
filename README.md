@@ -70,6 +70,7 @@ Requirements:
 
 - Node.js 26.8.2 (see `.nvmrc`)
 - npm
+- Brave Browser for end-to-end tests
 - A Cloudflare account only when exercising remote Workers AI or deploying
 
 ```bash
@@ -94,9 +95,16 @@ Remote inference can consume the Workers AI allocation associated with that Clou
 ```bash
 npm test
 npm run build
+npm run test:e2e
 ```
 
-The implementation has also been exercised against the local Cloudflare runtime through the complete create → join → message → Workflow → vote → finalize lifecycle, including authenticated WebSocket reconnects and permission failures. Desktop and mobile UI verification was performed in Brave with a clean browser console.
+The Playwright suite launches the installed Brave executable and starts a dedicated local Cloudflare runtime on port 4173. It covers the complete two-person create → join → message → Workflow → vote → finalize journey, authentication and role enforcement, vote replacement, state restoration in a fresh client, WebSocket reconnection, browser console errors, and serious accessibility violations. Deterministic AI fallbacks keep CI repeatable and free of model-output flakiness.
+
+Set `BRAVE_PATH` when Brave is installed somewhere other than the standard macOS or Linux location:
+
+```bash
+BRAVE_PATH=/path/to/brave npm run test:e2e
+```
 
 ## Deployment
 

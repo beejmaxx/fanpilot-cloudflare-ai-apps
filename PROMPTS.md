@@ -66,3 +66,7 @@ This file records the human prompts used while designing and implementing Rally.
 > and what testing have you already done? any e2e tests?
 
 > start dev server then
+
+> ok whats thee  e2e testing plan?
+
+> ok go ahead run through them
