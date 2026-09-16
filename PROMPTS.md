@@ -78,3 +78,7 @@ This file records the human prompts used while designing and implementing Rally.
 > it's using brave in github actions? I meant use brave for local testing
 
 > but it's fine I suppose if it's the same as chrome on github actions
+
+> [Temporary Cloudflare device authorization code omitted from the public history.]
+
+> I authorized it via chrome (it was open?)

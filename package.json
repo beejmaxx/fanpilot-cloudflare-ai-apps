@@ -16,7 +16,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
-    "test:smoke:remote": "node scripts/remote-ai-smoke.mjs"
+    "test:smoke:remote": "NODE_USE_ENV_PROXY=1 node scripts/remote-ai-smoke.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.46.0",

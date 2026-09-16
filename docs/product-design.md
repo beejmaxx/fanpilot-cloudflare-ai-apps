@@ -1,6 +1,6 @@
 # Rally product design
 
-Status: MVP implemented and verified locally
+Status: MVP deployed and verified with Workers AI
 
 ## Product promise
 

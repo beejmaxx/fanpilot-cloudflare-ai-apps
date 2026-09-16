@@ -2,6 +2,8 @@
 
 **Make the plan, together.**
 
+**Live demo:** [rally-planner.bijan-pourriahi.workers.dev](https://rally-planner.bijan-pourriahi.workers.dev)
+
 Rally is an AI group planner for dinners, outings, game nights, day trips, and other small events. An organizer starts a room with one sentence, invites friends, and lets everyone contribute naturally through chat. Rally extracts the group's hard constraints and preferences, creates three viable plans, runs a vote, and preserves the final decision.
 
 ![Rally final planning room](docs/rally-room.png)
