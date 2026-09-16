@@ -26,7 +26,7 @@ export default defineConfig({
       : { name: "brave-local", use: { browserName: "chromium", launchOptions: { executablePath: bravePath } } },
   ],
   webServer: {
-    command: "npm run dev -- --host 127.0.0.1 --port 4173",
+    command: "npm run dev:e2e -- --host 127.0.0.1 --port 4173",
     url: "http://127.0.0.1:4173/api/health",
     reuseExistingServer: !isCI,
     timeout: 120_000,
