@@ -92,3 +92,7 @@ This file records the human prompts used while designing and implementing Rally.
 > yes use fanpilot.app
 
 > use the apex, doens't need to point to orbrunner
+
+> [Image attached: screenshot of the Rally planning room.] the UI is a little cluttered, seems like it could be clearer/easier to use/tell what going on, it should be simple and not overwhelming to a first time user
+
+> I thin kthe righ sidebar text could be larger/clearer

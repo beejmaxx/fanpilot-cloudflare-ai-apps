@@ -377,7 +377,7 @@ function PlanningBoard({ session, snapshot, isOrganizer, busy, run }: {
 
   return (
     <aside className="plan-panel">
-      <div className="panel-heading"><div><h2>{snapshot.room.stage === "finalized" ? "Final plan" : "Live plan"}</h2><p>{planSubtitle(snapshot)}</p></div><Sparkles size={18} /></div>
+      <div className="panel-heading"><div><h2>{snapshot.room.stage === "finalized" ? "Final plan" : "Your plan"}</h2><p>{planSubtitle(snapshot)}</p></div></div>
       <div className="plan-scroll">
         {snapshot.room.stage === "finalized" && finalized ? (
           <FinalPlan proposal={finalized} snapshot={snapshot} />
@@ -394,16 +394,17 @@ function PlanningBoard({ session, snapshot, isOrganizer, busy, run }: {
           />
         ) : (
           <>
-            <ConstraintBoard constraints={snapshot.constraints} />
             <section className="plan-card next-step-card">
-              <div className="card-title-row"><h3>{snapshot.constraints.length ? "Ready for options?" : "Collect the essentials"}</h3><span className="status-chip warm">Next step</span></div>
-              <p>{snapshot.constraints.length ? "Invite everyone to add their non-negotiables, then let Rally find the best overlap." : "Tell Rally the date, location, budget, and anything that would make a plan impossible."}</p>
+              <span className="next-step-label">Next step</span>
+              <h3>{snapshot.constraints.length ? "Ready to make options?" : "Add the plan details"}</h3>
+              <p>{snapshot.constraints.length ? "Invite others to add their must-haves, or let Rally create three plans from what it knows now." : "Use the chat to share the date, location, budget, and anything the group needs."}</p>
               {isOrganizer ? (
                 <button className="primary-button" type="button" disabled={busy === "generate"} onClick={() => run("generate", () => api.generateProposals(session))}>
                   {busy === "generate" ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />} Create three options
                 </button>
               ) : <span className="waiting-note"><Clock3 size={15} /> Waiting for the organizer to create options</span>}
             </section>
+            <ConstraintBoard constraints={snapshot.constraints} />
           </>
         )}
       </div>
@@ -421,8 +422,8 @@ function ConstraintBoard({ constraints }: { constraints: Constraint[] }) {
     if (type === "attendance") return <Users size={15} />;
     return <CheckCircle2 size={15} />;
   };
-  return <section className="plan-card">
-    <div className="card-title-row"><h3>Captured so far</h3><span>{pluralize(constraints.length, "detail")}</span></div>
+  return <section className="plan-card constraint-card">
+    <div className="card-title-row"><h3>Plan details</h3><span>{pluralize(constraints.length, "detail")}</span></div>
     {constraints.length ? <div className="constraint-list">
       {constraints.map((constraint) => <div className="constraint-row" key={constraint.id}>
         <span className="constraint-icon">{iconFor(constraint.type)}</span>
