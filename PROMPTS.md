@@ -82,3 +82,11 @@ This file records the human prompts used while designing and implementing Rally.
 > [Temporary Cloudflare device authorization code omitted from the public history.]
 
 > I authorized it via chrome (it was open?)
+
+> is the testing 100% completed?
+
+> the testing that we agreed to I mean
+
+> can we deploy this to a public URL? do you need to use one of my existing cloudflare domains to do this?
+
+> yes use fanpilot.app

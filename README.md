@@ -2,7 +2,7 @@
 
 **Make the plan, together.**
 
-**Live demo:** [rally-planner.bijan-pourriahi.workers.dev](https://rally-planner.bijan-pourriahi.workers.dev)
+**Live demo:** [rally.fanpilot.app](https://rally.fanpilot.app)
 
 Rally is an AI group planner for dinners, outings, game nights, day trips, and other small events. An organizer starts a room with one sentence, invites friends, and lets everyone contribute naturally through chat. Rally extracts the group's hard constraints and preferences, creates three viable plans, runs a vote, and preserves the final decision.
 
@@ -111,7 +111,7 @@ BRAVE_PATH=/path/to/brave npm run test:e2e
 After deploying, run the opt-in Workers AI smoke test against the public origin. It fails if either extraction or proposal generation falls back from Workers AI:
 
 ```bash
-RALLY_BASE_URL=https://your-rally-origin.example npm run test:smoke:remote
+RALLY_BASE_URL=https://rally.fanpilot.app npm run test:smoke:remote
 ```
 
 ## Deployment
