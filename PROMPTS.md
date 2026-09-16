@@ -74,3 +74,7 @@ This file records the human prompts used while designing and implementing Rally.
 > what else needs testing?
 
 > yes go ahead
+
+> it's using brave in github actions? I meant use brave for local testing
+
+> but it's fine I suppose if it's the same as chrome on github actions

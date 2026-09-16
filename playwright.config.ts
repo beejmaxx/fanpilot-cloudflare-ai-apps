@@ -5,6 +5,7 @@ const bravePath = process.env.BRAVE_PATH ?? (
     ? "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
     : "/usr/bin/brave-browser"
 );
+const isCI = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -16,15 +17,18 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: {
     baseURL: "http://127.0.0.1:4173",
-    browserName: "chromium",
-    launchOptions: { executablePath: bravePath },
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
+  projects: [
+    isCI
+      ? { name: "chromium-ci", use: { browserName: "chromium" } }
+      : { name: "brave-local", use: { browserName: "chromium", launchOptions: { executablePath: bravePath } } },
+  ],
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 4173",
     url: "http://127.0.0.1:4173/api/health",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCI,
     timeout: 120_000,
   },
 });
