@@ -1,4 +1,4 @@
-# Two-app workspace and collaborative editor implementation plan
+# Two-app workspace and Draft collaborative editor implementation plan
 
 Status: implemented and deployed at https://editor.fanpilot.app.
 
@@ -6,7 +6,7 @@ This document records the approved design that guided implementation. The two-ap
 
 ## Product and scope
 
-Build a collaborative writing app for small teams drafting product specs and proposals. Working name: Editor. People write together, ask AI to revise selected paragraphs or the document, and review explicit proposed changes before applying them.
+Build a collaborative writing app for small teams drafting product specs and proposals. The shipped product is named Draft. People write together, ask AI to revise selected paragraphs or the document, and review explicit proposed changes before applying them.
 
 Rally remains an independently functioning event-planning application. The editor becomes the primary assignment demo; the repository README introduces both.
 
@@ -59,17 +59,21 @@ apps/
 packages/                  Create packages only when genuine reuse exists
 docs/
   rally/
+    PROMPTS.md
   editor/
     implementation-plan.md
+    PROMPTS.md
+  shared/
+    PROMPTS.md
 .github/workflows/
 package.json
 package-lock.json
 .nvmrc
 README.md
-PROMPTS.md
+PROMPTS.md                Prompt-history index
 ```
 
-Move existing Rally source, configs, scripts, and assets together. Move existing product documentation/screenshots to docs/rally and repair links. Keep root prompt history chronological. Dist, Wrangler state, TypeScript build caches, and browser artifacts stay app-local and ignored. Regenerate types/build outputs rather than moving stale generated caches. Preserve any useful local development state through a backup before adjusting its path.
+Move existing Rally source, configs, scripts, and assets together. Move existing product documentation/screenshots to docs/rally and repair links. Separate product-specific prompt histories under their app documentation, with shared assignment and repository prompts clearly identified. Dist, Wrangler state, TypeScript build caches, and browser artifacts stay app-local and ignored. Regenerate types/build outputs rather than moving stale generated caches. Preserve any useful local development state through a backup before adjusting its path.
 
 Root commands should expose dev:rally, dev:editor, build, test, test:e2e:rally, test:e2e:editor, deploy:rally, and deploy:editor. Aggregate checks must never imply deploying both apps. Allocate distinct dev/test ports. Retain the existing Node version during the move.
 
@@ -197,7 +201,7 @@ Workflow steps have bounded retry/timeouts. Cancellation is durable; late comple
 4. **Core writing UI:** formatting, presence, selection, paragraph identities, comments, mobile panels, accessible controls.
 5. **AI and review:** shared chat, bounded Workflow generation, diffs, stale detection, exactly-once decisions, cancellation and retries.
 6. **History and hardening:** guarded AI reversion, revision export, quotas, malicious inputs, crash/eviction recovery.
-7. **Release verification:** complete test matrix, real Workers AI smoke, reviewer README/demo script, prompt history, clean commits and GitHub push. Deploy only editor resources to its intended subdomain when implementation/release is resumed and authorized.
+7. **Release verification:** complete test matrix, real Workers AI smoke, reviewer README/demo script, separated prompt history, clean commits and GitHub push. Deploy only editor resources to its intended subdomain when implementation/release is resumed and authorized.
 
 Root CI runs independent Rally/editor jobs, with app-specific build/test artifacts. Local browsers use Brave; GitHub Actions uses Playwright Chromium. Keep Rally tests as a regression gate after the move. Do not rename the GitHub repository during implementation.
 

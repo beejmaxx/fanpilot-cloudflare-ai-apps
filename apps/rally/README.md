@@ -136,7 +136,7 @@ Rally does not verify venue availability, prices, reservations, or addresses. Ve
 ## Project documentation
 
 - [Product and technical design](../../docs/rally/product-design.md)
-- [AI prompt history](../../PROMPTS.md)
+- [AI prompt history](../../docs/rally/PROMPTS.md)
 - [Mobile room preview](../../docs/rally/rally-room-mobile.png)
 
 The prompt history is chronological because AI-assisted coding disclosure is part of the assignment.
