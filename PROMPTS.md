@@ -142,3 +142,21 @@ This file records the human prompts used while designing and implementing Rally.
 > yes do that, stop when done plannin
 
 Planning outcome: keep both apps in npm workspaces, preserve Rally's deployment and data, and build the editor as a separate Cloudflare app. The detailed plan is in docs/editor/implementation-plan.md. The final instruction supersedes the earlier automatic implementation handoff: stop after planning.
+
+## Collaborative editor implementation and hardening
+
+> impl
+
+> high level spot check/review
+
+> then go back to sol high
+
+> go ahead, e2e suite
+
+> what is remaining? lets see what is important since this is more of a POC - but if we can utilize some of the free cloudflare tools we should consider
+
+> ok look into turnstile, what are the implication, complications of adding it, what would change.
+
+> ok go ahead and implement all 4 things you mentioned, get turnstile done 100% first
+
+Implementation outcome: added managed Turnstile to document creation with mandatory server-side Siteverify validation, production hostname/action checks, official test keys for local automation, explicit failure and retry behavior, and a Cloudflare Worker Rate Limiting binding. The editor was deployed to `editor.fanpilot.app` as a Worker Custom Domain. Opening, joining, editing, and AI actions remain free of CAPTCHA challenges.

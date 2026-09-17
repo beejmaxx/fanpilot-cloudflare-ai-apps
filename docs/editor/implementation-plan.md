@@ -1,8 +1,8 @@
 # Two-app workspace and collaborative editor implementation plan
 
-Status: planning complete; implementation not started.
+Status: implemented and deployed at https://editor.fanpilot.app.
 
-The user approved keeping Rally and the new editor in one repository, then explicitly requested stopping after planning. Do not reorganize code, install dependencies, change deployments, or start implementation as part of this planning task. The previously requested Sol/medium implementation handoff is deferred until the user resumes implementation.
+This document records the approved design that guided implementation. The two-app workspace, editor, Cloudflare resources, automated test suite, Turnstile creation guard, and creation rate limit are now implemented.
 
 ## Product and scope
 

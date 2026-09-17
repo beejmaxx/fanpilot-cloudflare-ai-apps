@@ -5,7 +5,7 @@ This repository contains two independent Cloudflare applications in an npm works
 | App | Purpose | URL | Documentation |
 | --- | --- | --- | --- |
 | Rally | Realtime AI planning for groups | [fanpilot.app](https://fanpilot.app) | [App README](apps/rally/README.md) |
-| Editor | Collaborative writing with reviewable AI edits | `editor.fanpilot.app` (planned) | [Implementation plan](docs/editor/implementation-plan.md) |
+| Editor | Collaborative writing with reviewable AI edits | [editor.fanpilot.app](https://editor.fanpilot.app) | [App README](apps/editor/README.md) |
 
 ## Workspace commands
 
@@ -25,8 +25,8 @@ npm run test:e2e:rally
 npm run deploy:rally
 ```
 
-Equivalent `:editor` commands are reserved for the Editor workspace as it is implemented. `npm run build` and `npm test` run the available checks across all workspaces; deployment is always app-specific.
+The same commands are available for Editor by replacing `rally` with `editor`. `npm run build` and `npm test` run checks across both workspaces; deployment is always app-specific.
 
-Rally's production Worker name, Durable Object class and migration, Workflow name, bindings, and `fanpilot.app` route remain in [its Wrangler configuration](apps/rally/wrangler.jsonc).
+Each app has independent Worker, Durable Object, Workflow, binding, and route configuration. Rally serves `fanpilot.app`; Editor serves `editor.fanpilot.app` as a Worker Custom Domain.
 
 The chronological [prompt history](PROMPTS.md) records the AI-assisted development process.
