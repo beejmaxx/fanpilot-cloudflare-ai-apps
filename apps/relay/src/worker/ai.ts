@@ -12,13 +12,35 @@ const generationOutput = z.object({
     body: z.string().min(1).max(3_000), dependencyIds: z.array(z.string().uuid()).min(1).max(20),
   })).length(3),
 });
+const analysisJsonSchema = {
+  type: "object",
+  properties: {
+    question: { type: "string" },
+    facts: { type: "array", minItems: 1, maxItems: 8, items: { type: "object", properties: {
+      label: { type: "string" }, value: { type: "string" }, excerpt: { type: "string" },
+    }, required: ["label", "value", "excerpt"], additionalProperties: false } },
+  },
+  required: ["question", "facts"], additionalProperties: false,
+} as const;
+const generationJsonSchema = {
+  type: "object",
+  properties: {
+    posts: { type: "array", minItems: 3, maxItems: 3, items: { type: "object", properties: {
+      channel: { type: "string", enum: ["linkedin", "x"] },
+      purpose: { type: "string", enum: ["announcement", "feature-follow-up"] },
+      body: { type: "string" },
+      dependencyIds: { type: "array", minItems: 1, items: { type: "string" } },
+    }, required: ["channel", "purpose", "body", "dependencyIds"], additionalProperties: false } },
+  },
+  required: ["posts"], additionalProperties: false,
+} as const;
 
 export async function analyzeRelease(ai: Ai, input: AnalysisInput) {
   if (input.allowFallback) return { ...fallbackAnalysis(input), source: "fallback" as const };
   const prompt = `Extract only concrete product facts from these release notes. Every excerpt must be an exact substring of the notes. Do not infer customer availability from GitHub release status. Ask one short question about the highest-risk missing marketing detail. Product: ${input.productName}. Audience: ${input.audience}.\n\nRELEASE NOTES:\n${input.sourceBody}`;
   try {
-    const result = await ai.run(MODEL, { messages: [{ role: "system", content: "Return valid JSON only." }, { role: "user", content: prompt }], response_format: { type: "json_object" }, max_tokens: 1_600 });
-    const parsed = analysisOutput.parse(JSON.parse(modelText(result)));
+    const result = await ai.run(MODEL, { messages: [{ role: "system", content: "Return source-grounded release facts in the required schema." }, { role: "user", content: prompt }], response_format: { type: "json_schema", json_schema: analysisJsonSchema }, max_tokens: 1_600, temperature: 0.1 });
+    const parsed = analysisOutput.parse(modelValue(result));
     const facts = parsed.facts.filter((fact) => input.sourceBody.includes(fact.excerpt));
     if (!facts.length) throw new Error("No verifiable source excerpts");
     return { ...parsed, facts, source: "workers-ai" as const };
@@ -32,8 +54,8 @@ export async function generateCampaign(ai: Ai, input: GenerationInput) {
   const factList = input.facts.map((fact) => `${fact.id} | ${fact.label}: ${fact.value}`).join("\n");
   const prompt = `Create exactly three accurate launch posts for ${input.productName}: LinkedIn announcement, X announcement (max 280 characters), and LinkedIn feature follow-up. Audience: ${input.audience}. Tone: ${input.tone}. Destination: ${input.website}. Use only these confirmed facts. Map every factual post to the UUIDs it uses.\n${factList}`;
   try {
-    const result = await ai.run(MODEL, { messages: [{ role: "system", content: "Return valid JSON only." }, { role: "user", content: prompt }], response_format: { type: "json_object" }, max_tokens: 2_000 });
-    const parsed = generationOutput.parse(JSON.parse(modelText(result)));
+    const result = await ai.run(MODEL, { messages: [{ role: "system", content: "Return an accurate campaign in the required schema." }, { role: "user", content: prompt }], response_format: { type: "json_schema", json_schema: generationJsonSchema }, max_tokens: 2_000, temperature: 0.25 });
+    const parsed = generationOutput.parse(modelValue(result));
     const allowed = new Set(input.facts.map((fact) => fact.id));
     if (parsed.posts.some((post) => post.dependencyIds.some((id) => !allowed.has(id)))) throw new Error("Unknown fact dependency");
     return { ...parsed, source: "workers-ai" as const };
@@ -69,6 +91,16 @@ function fallbackGeneration(input: GenerationInput) {
 
 function modelText(result: unknown): string {
   if (typeof result === "string") return result;
-  if (result && typeof result === "object" && "response" in result && typeof result.response === "string") return result.response;
+  if (result && typeof result === "object" && "response" in result) {
+    if (typeof result.response === "string") return result.response;
+    if (result.response && typeof result.response === "object") return JSON.stringify(result.response);
+  }
   throw new Error("Missing model response");
+}
+
+function modelValue(result: unknown): unknown {
+  if (!result || typeof result !== "object" || !("response" in result)) {
+    return typeof result === "string" ? JSON.parse(result) : result;
+  }
+  return typeof result.response === "string" ? JSON.parse(result.response) : result.response;
 }

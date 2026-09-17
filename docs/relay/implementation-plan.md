@@ -155,7 +155,7 @@ SQLite indexes support campaign listing and reverse dependency lookup. Persist m
 
 ## Source import and access
 
-GitHub import accepts validated public repository and exact-release URLs, handles encoded tags, and constructs requests to the official GitHub API. Repository discovery selects the latest non-draft release with useful notes; when releases have no notes, it may use the latest tag and a root changelog. The chosen canonical source URL is persisted. Reject arbitrary hosts and redirects outside the allowed provider. Bound body sizes and timeouts; show rate-limit and not-found errors with paste-notes fallback. No user personal access tokens are accepted in v1.
+GitHub import accepts validated public repository and exact-release URLs and handles encoded tags. Repository discovery reads GitHub's public Atom release feed before the rate-limited API, then persists the chosen canonical release URL. The API and latest-tag root changelog are fallbacks. Reject arbitrary hosts and redirects outside the allowed provider. Bound body sizes and timeouts; show rate-limit and not-found errors with paste-notes fallback. No user personal access tokens are accepted in v1.
 
 Read the specific release by tag/ID. Persist `prerelease` and relevant timestamps; ask about availability independently. A private or deleted release becomes "Source unavailable" and retains the last stored evidence instead of being treated as unchanged.
 

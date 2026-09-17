@@ -31,7 +31,7 @@ The application uses optimistic versions for fact and post edits. Workflows capt
 
 Private return and one-time invitation tokens contain 256 bits of randomness. Only SHA-256 hashes are stored. Tokens travel in URL fragments and are removed from the address bar after the browser consumes them. Owner, editor, and viewer roles are enforced inside the Durable Object; a bare workspace UUID grants no access.
 
-GitHub import accepts public `github.com/<owner>/<repo>` and exact `github.com/<owner>/<repo>/releases/tag/<tag>` URLs and calls the official GitHub API. A repository URL selects the latest non-draft release with useful notes; if releases have no notes, Relay can use the latest tag and a root changelog. Arbitrary hosts and redirects are rejected. Imported text is treated as untrusted content, never as permission or approval instructions.
+GitHub import accepts public `github.com/<owner>/<repo>` and exact `github.com/<owner>/<repo>/releases/tag/<tag>` URLs. A repository URL reads GitHub's public release feed first, avoiding shared unauthenticated API quotas, and selects its latest published release with useful notes. The API and latest-tag root changelog provide fallbacks. Arbitrary hosts and redirects are rejected. Imported text is treated as untrusted content, never as permission or approval instructions.
 
 ## Cloudflare architecture
 

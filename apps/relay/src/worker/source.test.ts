@@ -12,15 +12,14 @@ describe("GitHub release discovery", () => {
   });
 
   it("selects the latest non-draft release with useful notes from a repository", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([
-      { tag_name: "v3", draft: true, body: "hidden" },
-      { tag_name: "v2", body: "" },
-      { name: "Version 1", tag_name: "v1", body: "Added durable launches.", html_url: "https://github.com/acme/widget/releases/tag/v1" },
-    ]), { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(`<?xml version="1.0"?><feed><entry>
+      <link rel="alternate" type="text/html" href="https://github.com/acme/widget/releases/tag/v1"/>
+      <title>Version 1</title><content type="html">&lt;p&gt;Added &lt;strong&gt;durable launches&lt;/strong&gt;.&lt;/p&gt;</content>
+    </entry></feed>`, { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const source = await fetchGitHubRelease("https://github.com/acme/widget");
-    expect(fetchMock).toHaveBeenCalledWith("https://api.github.com/repos/acme/widget/releases?per_page=10", expect.any(Object));
-    expect(source.body).toContain("Added durable launches.");
+    expect(fetchMock).toHaveBeenCalledWith("https://github.com/acme/widget/releases.atom", expect.any(Object));
+    expect(source.body).toContain("Added durable launches");
     expect(source.url).toBe("https://github.com/acme/widget/releases/tag/v1");
   });
 

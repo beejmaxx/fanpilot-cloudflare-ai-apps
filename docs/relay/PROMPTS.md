@@ -28,4 +28,4 @@ Implementation outcome: `fanpilot.app` became the three-application challenge po
 
 > you should make this work with existing github releases, make it easy to select a github release for an open source product - or just even accept the github link and do the work to find the tags/changelog and generate the report/display
 
-Implementation outcome: the GitHub input accepts either a repository or exact release URL. For a repository, Relay selects the latest non-draft release with useful notes and stores its canonical release URL. If releases lack notes, it can fall back to the latest tag plus a root changelog. The workspace displays a link to the selected source.
+Implementation outcome: the GitHub input accepts either a repository or exact release URL. For a repository, Relay reads GitHub's public release feed, selects the latest published release with useful notes, and stores its canonical release URL. API and latest-tag changelog paths provide fallbacks without requiring a personal GitHub token. The workspace displays a link to the selected source.

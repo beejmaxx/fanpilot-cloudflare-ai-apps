@@ -23,6 +23,10 @@ export function parseGitHubSourceUrl(value: string): { owner: string; repository
 export async function fetchGitHubRelease(value: string): Promise<{ body: string; url: string; checkedAt: number }> {
   const { owner, repository, tag } = parseGitHubSourceUrl(value);
   const repoApi = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`;
+  if (!tag) {
+    const feedRelease = await fetchLatestReleaseFeed(owner, repository);
+    if (feedRelease) return feedRelease;
+  }
   const endpoint = tag ? `${repoApi}/releases/tags/${encodeURIComponent(tag)}` : `${repoApi}/releases?per_page=10`;
   let response: Response;
   try {
@@ -44,6 +48,51 @@ export async function fetchGitHubRelease(value: string): Promise<{ body: string;
     .filter(Boolean).join("\n\n").slice(0, 20_000);
   if (!data.body?.trim()) throw new HttpError(422, "That release has no notes. Use the repository URL to let Relay find another release, or paste release notes");
   return { body, url: data.html_url || value, checkedAt: Date.now() };
+}
+
+async function fetchLatestReleaseFeed(owner: string, repository: string): Promise<{ body: string; url: string; checkedAt: number } | null> {
+  const feedUrl = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/releases.atom`;
+  let response: Response;
+  try { response = await fetch(feedUrl, { headers: { accept: "application/atom+xml", "user-agent": "launch-relay" }, redirect: "manual", signal: AbortSignal.timeout(15_000) }); }
+  catch (error) {
+    console.warn("GitHub release feed fetch failed", error instanceof Error ? error.message : "Unknown fetch error");
+    return null;
+  }
+  if (response.status >= 300 && response.status < 400) throw new HttpError(502, "GitHub returned an unexpected release-feed redirect");
+  if (response.status === 404) throw new HttpError(404, "That public GitHub repository was not found. Paste the release notes instead");
+  if (!response.ok) return null;
+  const xml = (await response.text()).slice(0, 1_000_000);
+  const entry = xml.match(/<entry>([\s\S]*?)<\/entry>/)?.[1];
+  if (!entry) return null;
+  const title = decodeEntities(entry.match(/<title>([\s\S]*?)<\/title>/)?.[1] || "Latest release").trim();
+  const href = decodeEntities(entry.match(/<link\s+rel="alternate"\s+type="text\/html"\s+href="([^"]+)"\s*\/?\s*>/)?.[1] || "");
+  const encodedContent = entry.match(/<content\s+type="html">([\s\S]*?)<\/content>/)?.[1] || "";
+  const releaseText = htmlToText(decodeEntities(encodedContent)).slice(0, 19_000).trim();
+  if (!href || !releaseText) return null;
+  const parsed = parseGitHubSourceUrl(href);
+  if (parsed.owner !== owner || parsed.repository !== repository || !parsed.tag) throw new HttpError(502, "GitHub returned an invalid release-feed link");
+  return { body: [title, releaseText, "GitHub marks this as a published release."].join("\n\n").slice(0, 20_000), url: href, checkedAt: Date.now() };
+}
+
+function htmlToText(value: string): string {
+  return decodeEntities(value
+    .replace(/<\s*(br|\/p|\/li|\/h[1-6]|\/tr)\s*\/?>/gi, "\n")
+    .replace(/<\s*li(?:\s[^>]*)?>/gi, "- ")
+    .replace(/<[^>]+>/g, " "))
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function decodeEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (entity, code: string) => {
+    if (code[0] === "#") {
+      const number = code[1].toLowerCase() === "x" ? Number.parseInt(code.slice(2), 16) : Number.parseInt(code.slice(1), 10);
+      return Number.isFinite(number) ? String.fromCodePoint(number) : entity;
+    }
+    return ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" } as Record<string, string>)[code.toLowerCase()] || entity;
+  });
 }
 
 async function fetchTaggedChangelog(owner: string, repository: string, repoApi: string): Promise<{ body: string; url: string; checkedAt: number }> {
