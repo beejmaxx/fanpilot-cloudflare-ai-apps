@@ -246,6 +246,26 @@ test.describe("Draft collaborative editor", () => {
     await expect(page.getByRole("heading", { name: "Private link required" })).toBeVisible();
   });
 
+  test("a copied private return link restores the same identity in a fresh browser", async ({ browser, page }) => {
+    await createThroughUI(page, "Private return", "Owner", "Blank");
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    await page.getByRole("button", { name: "Copy my private return link" }).click();
+    await expect(page.getByRole("button", { name: "Private return link copied" })).toBeVisible();
+    const returnLink = await page.evaluate(() => navigator.clipboard.readText());
+    expect(returnLink).toContain("#access=");
+
+    const freshContext = await browser.newContext();
+    const freshPage = await freshContext.newPage();
+    await freshPage.goto(returnLink);
+    await expect(freshPage.locator(".draft-editor")).toBeVisible({ timeout: 15_000 });
+    await expect(freshPage.getByText("Owner (you)")).toHaveCount(0);
+    const saved = await freshPage.evaluate(() => JSON.parse(localStorage.getItem("draft:recent-documents") ?? "[]")[0]);
+    const original = await page.evaluate(() => JSON.parse(localStorage.getItem("draft:recent-documents") ?? "[]")[0]);
+    expect(saved.participantId).toBe(original.participantId);
+    await freshContext.close();
+  });
+
   test("main screens have no serious accessibility violations", async ({ page }) => {
     await page.goto("/");
     let results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();

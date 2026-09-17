@@ -274,15 +274,23 @@ function HistoryPanel({ documentId, token, snapshot, setSnapshot, setError }: Pa
 function SharePanel({ documentId, token, snapshot, setSnapshot, setError }: PanelProps) {
   const [role, setRole] = useState<"editor" | "viewer">("editor");
   const [link, setLink] = useState("");
+  const [returnLinkCopied, setReturnLinkCopied] = useState(false);
   async function create() { try { const result = await api.createInvite(documentId, token, role); setLink(`${location.origin}/join/${documentId}#invite=${result.inviteToken}`); } catch (reason) { setError(messageOf(reason)); } }
+  async function copyReturnLink() {
+    try {
+      await navigator.clipboard.writeText(`${location.origin}/doc/${documentId}#access=${token}`);
+      setReturnLinkCopied(true);
+      window.setTimeout(() => setReturnLinkCopied(false), 2_000);
+    } catch { setError("Could not copy your private return link"); }
+  }
   async function changeName() { const displayName = prompt("How should collaborators see your name?", snapshot.participant.displayName); if (!displayName?.trim()) return; try { setSnapshot(await api.rename(documentId, token, displayName)); } catch (reason) { setError(messageOf(reason)); } }
   async function rotateLink() { try { const result = await api.rotateAccess(documentId, token); saveDocument({ id: documentId, title: snapshot.document.title, participantId: snapshot.participant.id, token: result.accessToken, updatedAt: Date.now() }); location.href = `/doc/${documentId}#access=${result.accessToken}`; } catch (reason) { setError(messageOf(reason)); } }
   async function revoke(id: string) { try { setSnapshot(await api.revokeParticipant(documentId, token, id)); } catch (reason) { setError(messageOf(reason)); } }
   function forget() { forgetDocument(documentId); location.href = "/"; }
-  return <div><section className="panel-intro compact"><div><h3>Share this document</h3><p>Each person gets a distinct private identity. Display names can be the same.</p></div></section>
+  return <div><section className="panel-intro compact"><div><h3>Share this document</h3><p>Create an invite for someone else. The address-bar URL alone does not grant access.</p></div></section>
     {snapshot.participant.role === "owner" ? <div className="share-controls"><label>Invite as<select value={role} onChange={(event) => setRole(event.target.value as "editor" | "viewer")}><option value="editor">Editor — can write and use AI</option><option value="viewer">Viewer — read only</option></select></label><button className="primary wide" onClick={create}><Link2 /> Create invite link</button>{link && <div className="copy-link"><input readOnly value={link} /><button onClick={() => navigator.clipboard.writeText(link)}><Copy /></button><small>This one-time link creates a new identity. Send it only to the intended person.</small></div>}</div> : <p className="notice">Only the document owner can create invitation links.</p>}
     <section className="people-list"><h3>People</h3>{snapshot.participants.map((person, index) => <div key={person.id}><span style={{ background: colors[index % colors.length] }}>{initials(person.displayName)}</span><p><strong>{person.displayName}{person.id === snapshot.participant.id ? " (you)" : ""}</strong><small>{person.role}</small></p>{snapshot.participant.role === "owner" && person.id !== snapshot.participant.id && <button className="revoke" onClick={() => revoke(person.id)}>Revoke</button>}</div>)}</section>
-    <div className="account-actions"><button onClick={changeName}>Change my display name</button><button onClick={rotateLink}>Rotate my private return link</button><button className="danger-link" onClick={forget}>Forget this document on this device</button></div>
+    <div className="account-actions"><strong>Your access</strong><button onClick={copyReturnLink}><Copy /> {returnLinkCopied ? "Private return link copied" : "Copy my private return link"}</button><small>Use this only to reopen the document as {snapshot.participant.displayName} on another browser or device. Keep it private.</small><button onClick={changeName}>Change my display name</button><button onClick={rotateLink}>Rotate my private return link</button><button className="danger-link" onClick={forget}>Forget this document on this device</button></div>
   </div>;
 }
 
@@ -301,7 +309,7 @@ function Brand() { return <a href="/" className="brand"><Logo /><span>Draft</spa
 function Logo() { return <span className="logo"><Sparkles /></span>; }
 function LoadingPage() { return <main className="loading-page"><Logo /><span /><p>Opening your shared draft…</p></main>; }
 function ErrorPage({ message }: { message: string }) { return <main className="center-page"><div className="error-card"><Logo /><h1>We couldn’t open this document</h1><p>{message}</p><a className="primary" href="/">Back to Draft</a></div></main>; }
-function AccessMissing({ documentId }: { documentId: string }) { return <main className="center-page"><div className="error-card"><Logo /><h1>Private link required</h1><p>This document ID does not grant access. Open your private return link or ask the owner for an invitation.</p><button className="danger-link" onClick={() => { forgetDocument(documentId); location.href = "/"; }}>Back to Draft</button></div></main>; }
+function AccessMissing({ documentId }: { documentId: string }) { return <main className="center-page"><div className="error-card"><Logo /><h1>Private link required</h1><p>The address-bar URL intentionally contains no access key. Open your private return link, return to Draft on the device where you joined, or ask the owner for an invitation.</p><button className="danger-link" onClick={() => { forgetDocument(documentId); location.href = "/"; }}>Back to Draft</button></div></main>; }
 
 function parseRoute(): { kind: "home" } | { kind: "document" | "join"; documentId: string; token: string } {
   const match = location.pathname.match(/^\/(doc|join)\/([0-9a-f-]{36})$/i);

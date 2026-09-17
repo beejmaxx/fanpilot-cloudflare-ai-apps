@@ -164,3 +164,5 @@ Implementation outcome: added managed Turnstile to document creation with mandat
 > when I hit enter, it doesn't submit the message in chat
 
 > [Image attached: the AI suggestion panel with a long accepted suggestion.] I can't see the bottom buttons!
+
+> [Image attached: a bare document URL opened in Incognito showing “Private link required”.] I opened the link in incognito and i see this https://editor.fanpilot.app/doc/54bdf4b1-f24b-4fae-8817-d63cebbed0af
