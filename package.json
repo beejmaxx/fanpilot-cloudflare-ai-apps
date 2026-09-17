@@ -13,15 +13,23 @@
   "scripts": {
     "dev:rally": "npm run dev --workspace=@fanpilot/rally",
     "dev:editor": "npm run dev --workspace=@fanpilot/editor",
+    "dev:relay": "npm run dev --workspace=@fanpilot/relay",
+    "dev:portal": "npm run dev --workspace=@fanpilot/portal",
     "build": "npm run build --workspaces --if-present",
     "build:rally": "npm run build --workspace=@fanpilot/rally",
     "build:editor": "npm run build --workspace=@fanpilot/editor",
+    "build:relay": "npm run build --workspace=@fanpilot/relay",
+    "build:portal": "npm run build --workspace=@fanpilot/portal",
     "test": "npm run test --workspaces --if-present",
     "test:rally": "npm run test --workspace=@fanpilot/rally",
     "test:editor": "npm run test --workspace=@fanpilot/editor",
+    "test:relay": "npm run test --workspace=@fanpilot/relay",
     "test:e2e:rally": "npm run test:e2e --workspace=@fanpilot/rally",
     "test:e2e:editor": "npm run test:e2e --workspace=@fanpilot/editor",
+    "test:e2e:relay": "npm run test:e2e --workspace=@fanpilot/relay",
     "deploy:rally": "npm run deploy --workspace=@fanpilot/rally",
-    "deploy:editor": "npm run deploy --workspace=@fanpilot/editor"
+    "deploy:editor": "npm run deploy --workspace=@fanpilot/editor",
+    "deploy:relay": "npm run deploy --workspace=@fanpilot/relay",
+    "deploy:portal": "npm run deploy --workspace=@fanpilot/portal"
   }
 }

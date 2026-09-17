@@ -389,7 +389,7 @@ export class RallyRoom extends DurableObject<Env> {
       "INSERT INTO invitations (id, token_hash, created_by_participant_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
       crypto.randomUUID(), await hashToken(token), participantId, now + 30 * 24 * 60 * 60 * 1_000, now,
     );
-    const origin = request.headers.get("x-rally-origin") ?? "https://fanpilot.app";
+    const origin = request.headers.get("x-rally-origin") ?? "https://rally.fanpilot.app";
     return { invitationUrl: `${origin}/join/${this.getRoom().id}#invite=${token}` };
   }
 

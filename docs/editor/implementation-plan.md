@@ -83,7 +83,7 @@ Keep each app's permissions, schemas, API, styling, database, Workflow, and UI i
 
 | App | Intended URL | Runtime and data |
 | --- | --- | --- |
-| Rally | fanpilot.app | Existing rally-planner Worker, RallyRoom namespace/migration history, proposal Workflow |
+| Rally | rally.fanpilot.app | Existing rally-planner Worker, RallyRoom namespace/migration history, proposal Workflow |
 | Editor | editor.fanpilot.app | Separate Worker, DocumentRoom SQLite Durable Object namespace, AI editing Workflow |
 
 Preserve Rally's exact Worker name, DO class name, migration tags, Workflow name, bindings, and route. A source-directory move must not create replacement resources or strand existing rooms. Keep the disconnected old D1 database untouched.

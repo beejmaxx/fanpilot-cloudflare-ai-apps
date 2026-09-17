@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "launch-relay",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-09-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "vars": {
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAE5oD8yw1R52l4GL",
+    "TURNSTILE_EXPECTED_HOSTNAME": "launch.fanpilot.app"
+  },
+  "routes": [{ "pattern": "launch.fanpilot.app", "custom_domain": true }],
+  "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*"] },
+  "ai": { "binding": "AI" },
+  "durable_objects": {
+    "bindings": [{ "name": "LAUNCH_WORKSPACES", "class_name": "LaunchWorkspace" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LaunchWorkspace"] }],
+  "workflows": [
+    { "name": "relay-release-analysis", "binding": "RELEASE_ANALYSIS_WORKFLOW", "class_name": "ReleaseAnalysisWorkflow" },
+    { "name": "relay-campaign-generation", "binding": "CAMPAIGN_GENERATION_WORKFLOW", "class_name": "CampaignGenerationWorkflow" }
+  ],
+  "ratelimits": [{
+    "name": "WORKSPACE_CREATION_RATE_LIMITER", "namespace_id": "41002",
+    "simple": { "limit": 10, "period": 60 }
+  }]
+}

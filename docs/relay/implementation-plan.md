@@ -1,6 +1,6 @@
 # Launch Relay: product and implementation plan
 
-Status: proposed; planning only. No application or deployment exists yet.
+Status: implemented in `apps/relay`; deployed at https://launch.fanpilot.app.
 
 ## Product decision
 
@@ -17,7 +17,7 @@ The differentiating behavior is traceability and change propagation: factual sta
 Ship one complete loop:
 
 1. Create a product workspace with name, website, audience, tone, and a short optional writing sample.
-2. Paste release notes or import one exact public GitHub release URL.
+2. Paste release notes, import one exact public GitHub release URL, or paste a repository URL and let Relay select its latest published release with useful notes.
 3. Review extracted facts and answer at most three prioritized clarification questions at a time through chat.
 4. Confirm customer availability, launch date/time, audience, and relevant pricing or limitations.
 5. Generate three posts: a LinkedIn announcement, an X announcement, and a LinkedIn feature follow-up. Channels can be changed before generation; initially support LinkedIn and single-post X text only.
@@ -40,7 +40,7 @@ Product name, "New launch", and campaign cards grouped as In progress, Ready, an
 
 ### New launch
 
-Accept a release URL or pasted notes. The GitHub input is an exact release, not "latest": source identity must remain stable as later releases appear. A seeded demonstration can help first-time visitors, clearly labeled as sample data.
+Accept a repository URL, exact release URL, or pasted notes. Repository import discovers the latest published release with useful notes, then persists its canonical release URL so source identity remains stable as later releases appear. An exact release URL pins a specific tag. A seeded demonstration can help first-time visitors, clearly labeled as sample data.
 
 ### Confirm what shipped
 
@@ -104,7 +104,7 @@ Published records retain the exact copied/published revision. Marking published 
 
 ## Cloudflare architecture
 
-Proposed workspace: `apps/relay`, package `@fanpilot/relay`. Proposed hostname: `launch.fanpilot.app`, subject to availability verification when implementing. Independent Worker, Durable Object namespace, Workflow bindings, migrations, and deploy command.
+Workspace: `apps/relay`, package `@fanpilot/relay`, deployed independently at `launch.fanpilot.app` with its own Worker, Durable Object namespace, two Workflow bindings, migration history, and deploy command.
 
 | Component | Responsibility |
 | --- | --- |
@@ -155,7 +155,7 @@ SQLite indexes support campaign listing and reverse dependency lookup. Persist m
 
 ## Source import and access
 
-GitHub import accepts only validated public `github.com/<owner>/<repo>/releases/tag/<tag>` URLs, handles encoded tags, and constructs a request to the official GitHub API. Reject arbitrary hosts and redirects outside the allowed provider. Bound body sizes, timeouts, and retries; show rate-limit and not-found errors with paste-notes fallback. Cache only public source responses. No user personal access tokens in v1.
+GitHub import accepts validated public repository and exact-release URLs, handles encoded tags, and constructs requests to the official GitHub API. Repository discovery selects the latest non-draft release with useful notes; when releases have no notes, it may use the latest tag and a root changelog. The chosen canonical source URL is persisted. Reject arbitrary hosts and redirects outside the allowed provider. Bound body sizes and timeouts; show rate-limit and not-found errors with paste-notes fallback. No user personal access tokens are accepted in v1.
 
 Read the specific release by tag/ID. Persist `prerelease` and relevant timestamps; ask about availability independently. A private or deleted release becomes "Source unavailable" and retains the last stored evidence instead of being treated as unchanged.
 
@@ -204,4 +204,4 @@ Default to public GitHub releases plus pasted notes, LinkedIn and X text, three 
 - [Cloudflare Workflows Workers API](https://developers.cloudflare.com/workflows/build/workers-api/): recoverable steps and event primitives.
 - [Cloudflare Workflow sleeping and retrying](https://developers.cloudflare.com/workflows/build/sleeping-and-retrying/): durable waits and retries; generation jobs remain bounded in this design.
 
-Verify platform limits, pricing, model availability, and hostname availability during implementation rather than treating this plan as a live configuration guarantee.
+Platform limits, pricing, and model availability remain operational concerns. The implemented binding and domain configuration are the source of truth for the live deployment.

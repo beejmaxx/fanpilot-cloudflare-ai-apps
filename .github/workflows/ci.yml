@@ -56,3 +56,38 @@ jobs:
             apps/editor/test-results
           if-no-files-found: ignore
           retention-days: 7
+
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26.8.2
+          cache: npm
+      - run: npm ci
+      - run: npm run test:relay
+      - run: npm run build:relay
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:relay
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: relay-playwright-results
+          path: |
+            apps/relay/playwright-report
+            apps/relay/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  portal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26.8.2
+          cache: npm
+      - run: npm ci
+      - run: npm run build:portal
