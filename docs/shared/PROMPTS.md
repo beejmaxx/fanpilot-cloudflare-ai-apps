@@ -53,6 +53,8 @@ These prompts cover assignment interpretation, product discovery before an app w
 
 > make sure the github is presentable to cloudflare
 
+> btw at some point update the readme to detail the usage of cloudflare products, particularly/especially around this "challenge"
+
 ## Repository outcomes
 
 - The apps live in independent npm workspaces with one root lockfile and separate Cloudflare resources.

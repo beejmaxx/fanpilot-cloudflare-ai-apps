@@ -7,6 +7,7 @@ AI-assisted coding was used throughout this repository. The human prompts are se
 | Assignment discovery, workspace structure, and repository presentation | [Shared prompts](docs/shared/PROMPTS.md) |
 | Rally group-planning application | [Rally prompts](docs/rally/PROMPTS.md) |
 | Draft collaborative editor | [Draft prompts](docs/editor/PROMPTS.md) |
+| Launch Relay release marketing application (planning only) | [Launch Relay prompts](docs/relay/PROMPTS.md) |
 
 Entries remain chronological within each file and preserve the original wording, spelling, and shorthand. Short editorial notes in square brackets replace attached images and one temporary Cloudflare device authorization code; no secret values are published.
 
