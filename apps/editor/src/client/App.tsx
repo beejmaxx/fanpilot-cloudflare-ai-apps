@@ -220,7 +220,7 @@ function AiPanel({ documentId, token, snapshot, setSnapshot, selectedBlocks, pro
   const [busy, setBusy] = useState(false);
   const suggestions = snapshot.suggestions;
   async function submit(instruction = prompt, forceScope?: "advice") {
-    if (!instruction.trim()) return;
+    if (busy || !instruction.trim()) return;
     setBusy(true); setError("");
     try {
       await provider.whenSaved();
@@ -238,14 +238,18 @@ function AiPanel({ documentId, token, snapshot, setSnapshot, selectedBlocks, pro
   const pendingByJob = suggestions.filter((item) => item.status === "pending").reduce<Record<string, number>>((counts, item) => ({ ...counts, [item.jobId]: (counts[item.jobId] ?? 0) + 1 }), {});
   return <div className="ai-panel">
     <section className="panel-intro"><div className="ai-orb"><Sparkles /></div><div><h3>What should change?</h3><p>{selectedBlocks.length ? `Your request will apply to ${selectedBlocks.length === 1 ? "the selected paragraph" : `${selectedBlocks.length} selected paragraphs`}.` : "Your request will consider the whole document."}</p></div></section>
-    <div className="quick-actions">{["Make it clearer", "Shorten this", "Flag unanswered questions"].map((action) => <button key={action} onClick={() => submit(action, action.startsWith("Flag") ? "advice" : undefined)}>{action}</button>)}</div>
-    <form className="prompt-box" onSubmit={(event) => { event.preventDefault(); submit(); }}><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={2000} placeholder="Ask for a rewrite or feedback…" /><button disabled={busy || !prompt.trim()} aria-label="Send AI request"><Send /></button></form>
+    <div className="quick-actions">{["Make it clearer", "Shorten this", "Flag unanswered questions"].map((action) => <button key={action} disabled={busy} onClick={() => submit(action, action.startsWith("Flag") ? "advice" : undefined)}>{action}</button>)}</div>
+    <form className="prompt-box" onSubmit={(event) => { event.preventDefault(); submit(); }}><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => {
+      if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+      event.preventDefault();
+      if (!busy && prompt.trim()) event.currentTarget.form?.requestSubmit();
+    }} maxLength={2000} placeholder="Ask for a rewrite or feedback…" /><button disabled={busy || !prompt.trim()} aria-label="Send AI request"><Send /></button></form>
     {snapshot.activeJob && <div className="working"><span /> Draft AI is preparing reviewable changes…</div>}
     {suggestions.length > 0 && <section className="suggestions"><div className="section-heading"><h3>Suggestions</h3><span>{suggestions.filter((item) => item.status === "pending").length} to review</span></div>{Object.entries(pendingByJob).some(([, count]) => count > 1) && snapshot.participant.role !== "viewer" && <div className="accept-all-row">{Object.entries(pendingByJob).filter(([, count]) => count > 1).slice(0, 1).map(([jobId, count]) => <button key={jobId} onClick={() => acceptSet(jobId)}><CheckCircle2 /> Accept all {count} changes</button>)}</div>}{suggestions.map((suggestion) => <article className={`suggestion ${suggestion.status}`} key={suggestion.id}>
       <div className="suggestion-meta"><span>{suggestion.requesterName} asked Draft AI</span><StatusPill status={suggestion.status} /></div>
+      {suggestion.status === "pending" && snapshot.participant.role !== "viewer" && <div className="decision-row"><button className="accept" onClick={() => decide(suggestion.id, "accept")}><Check /> Accept</button><button onClick={() => decide(suggestion.id, "reject")}><X /> Reject</button></div>}
       <div className="diff"><div><small>BEFORE</small><p>{suggestion.beforeText || <em>Empty paragraph</em>}</p></div><div><small>PROPOSED</small><p>{suggestion.afterText || <em>Empty paragraph</em>}</p></div></div>
       <p className="rationale">{suggestion.rationale}</p>
-      {suggestion.status === "pending" && snapshot.participant.role !== "viewer" && <div className="decision-row"><button className="accept" onClick={() => decide(suggestion.id, "accept")}><Check /> Accept</button><button onClick={() => decide(suggestion.id, "reject")}><X /> Reject</button></div>}
     </article>)}</section>}
     {snapshot.chatMessages.length > 0 && <section className="chat-log"><h3>Shared AI chat</h3>{snapshot.chatMessages.map((message) => <div className={message.kind} key={message.id}><strong>{message.participantName}</strong><p>{message.body}</p></div>)}</section>}
   </div>;

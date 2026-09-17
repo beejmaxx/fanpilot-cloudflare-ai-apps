@@ -160,3 +160,7 @@ Planning outcome: keep both apps in npm workspaces, preserve Rally's deployment 
 > ok go ahead and implement all 4 things you mentioned, get turnstile done 100% first
 
 Implementation outcome: added managed Turnstile to document creation with mandatory server-side Siteverify validation, production hostname/action checks, official test keys for local automation, explicit failure and retry behavior, and a Cloudflare Worker Rate Limiting binding. The editor was deployed to `editor.fanpilot.app` as a Worker Custom Domain. Opening, joining, editing, and AI actions remain free of CAPTCHA challenges.
+
+> when I hit enter, it doesn't submit the message in chat
+
+> [Image attached: the AI suggestion panel with a long accepted suggestion.] I can't see the bottom buttons!
